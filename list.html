@@ -153,13 +153,25 @@ label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
       el('div', { style: 'flex:1' }, el('div', { text: 'ほかに欲しい物がある時は', style: 'font-weight:700;font-size:14px' }), el('div', { class: 'meta', text: '置いてほしい物・新しく欲しい物を、一言で管理部に頼めます。' })),
       el('button', { class: 'btn', type: 'button', text: 'ほしい！を伝える', onclick: function () { go('want'); } }));
   }
+  /* 前回の一覧を端末に控えておき、開いた時にすぐ出して、裏で新しくする（GAS の返事待ちの重さを減らす） */
+  function cGet(k) { try { return JSON.parse(localStorage.getItem('bihin.c.' + k) || 'null'); } catch (e) { return null; } }
+  function cSet(k, v) { try { localStorage.setItem('bihin.c.' + k, JSON.stringify(v)); } catch (e) {} }
+  var refreshed = false;
   function needItems(fn) {
     if (S.items) return fn();
-    show(el('div', { class: 'empty', text: '読み込んでいます…' }));
+    var c = cGet('list');
+    if (c) { S.items = c.items; S.spots = c.spots; fn(); }
+    else show(el('div', { class: 'empty', text: '読み込んでいます…' }));
+    if (refreshed) return;
+    refreshed = true;
     get({ action: 'list' }).then(function (r) {
-      if (!r || !r.ok) return trouble(r);
-      S.items = r.items; S.spots = r.spots; fn();
-    }).catch(function () { trouble(null); });
+      if (!r || !r.ok) { if (!c) trouble(r); return; }
+      cSet('list', { items: r.items, spots: r.spots });
+      S.items = r.items; S.spots = r.spots;
+      var a = document.activeElement;
+      if (c && a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;   // 入力中は描き直さない
+      fn();
+    }).catch(function () { if (!c) trouble(null); });
   }
 
   /* ---------- 写真（見えた物から順に読む） ---------- */
@@ -217,11 +229,16 @@ label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
   function mapView() {
     needItems(function () {
       if (S.map) return drawMap();
-      show(el('div', { class: 'empty', text: 'マップを読み込んでいます…' }));
+      var c = cGet('map');
+      if (c) { S.map = c; drawMap(); }   // 配置図はほとんど変わらないので、控えがあればすぐ出す
+      else show(el('div', { class: 'empty', text: 'マップを読み込んでいます…' }));
+      if (S.mapLoading) return;
+      S.mapLoading = true;
       get({ action: 'map' }).then(function (r) {
-        if (!r || !r.ok) return trouble(r);
-        S.map = r; drawMap();
-      }).catch(function () { trouble(null); });
+        if (!r || !r.ok) { if (!c) trouble(r); return; }
+        cSet('map', { svg: r.svg, viewBox: r.viewBox, spots: r.spots });
+        S.map = r; if (S.tab === 'map') drawMap();
+      }).catch(function () { if (!c) trouble(null); });
     });
   }
   function drawMap() {

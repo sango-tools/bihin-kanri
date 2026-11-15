@@ -204,6 +204,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   function logout(expired) {
     if (S.sess && !expired) call({ action: 'logout' }).catch(function () {});
     S.sess = null; clearSess();
+    try { Object.keys(localStorage).filter(function (k) { return k.indexOf('bihin.c.') === 0; }).forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
     loginView(expired ? 'ログインの期限が切れました。もう一度ログインしてください。' : null);
   }
   document.getElementById('out').onclick = function () { logout(false); };
@@ -255,14 +256,24 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   function lsGet(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   var TF = { kind: lsGet('bihin.t.kind', 'all'), state: 'open', q: '', sort: lsGet('bihin.t.sort', 'new') };
+  /* 前回の内容を端末に控えておき、開いた時にすぐ出して、裏で新しくする（GAS の返事待ちの重さを減らす）。
+     ログアウトすると消す（共用の端末に残さないため） */
+  function cGet(k) { try { return JSON.parse(localStorage.getItem('bihin.c.' + k) || 'null'); } catch (e) { return null; } }
+  function cSet(k, v) { try { localStorage.setItem('bihin.c.' + k, JSON.stringify(v)); } catch (e) {} }
+  function typing() { var a = document.activeElement; return a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && app.contains(a); }
+  function staleNote() { return el('div', { class: 'meta', id: 'stale', text: '前回の内容を出しています。新しくしています…' }); }
   function tasksView(flash) {
-    show(el('div', { class: 'empty', text: '連絡を読み込んでいます…' }));
+    var c = cGet('tasks');
+    if (c) { S.tasks = c; drawTasks(flash, true); } else show(el('div', { class: 'empty', text: '連絡を読み込んでいます…' }));
     call({ action: 'tasks' }).then(function (r) {
       if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
-      S.tasks = r.tasks; drawTasks(flash);
+      cSet('tasks', r.tasks); S.tasks = r.tasks;
+      if (S.tab !== 'tasks') return;
+      if (c && typing()) { var s = document.getElementById('stale'); if (s) s.textContent = '新しい内容が届きました（入力が終わったら「読み直す」）'; return; }
+      drawTasks(flash);
     }).catch(fail);
   }
-  function drawTasks(flash) {
+  function drawTasks(flash, stale) {
     var ts = S.tasks;
     var cnt = function (f) { return ts.filter(f).length; };
     var kinds = [['all', 'すべて', function () { return true; }], ['out', '在庫切れ', function (t) { return t.kind === 'out'; }], ['req', 'ほしい！', function (t) { return t.kind === 'req'; }]];
@@ -304,7 +315,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
       el('div', { class: 'row' }, el('span', { class: 'meta', style: 'flex:1', text: '済んだ連絡は60日まで出します。' }), el('button', { class: 'btn small', type: 'button', text: '読み直す', onclick: function () { tasksView(); } })));
     if (!S.spots.length) call({ action: 'itemsAdmin' }).then(function (x) { if (x.ok) { S.spots = x.spots; S.adminItems = x.items; if (TF.sort === 'spot') fill(); } }).catch(function () {});
     fill();
-    show(flash, head, list);
+    show(stale ? staleNote() : null, flash, head, list);
   }
   function taskCard(t) {
     var isOut = t.kind === 'out';
@@ -348,11 +359,18 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
 
   /* ---------- 管理部：置き場所ごとの状況（見守りの「現場の状況」と同じく、手当てが要る所を上に） ---------- */
   function spotsView() {
-    show(el('div', { class: 'empty', text: '置き場所の状況を読み込んでいます…' }));
+    var c = cGet('spots');
+    if (c) drawSpots(c, true); else show(el('div', { class: 'empty', text: '置き場所の状況を読み込んでいます…' }));
     call({ action: 'spotStatus' }).then(function (r) {
       if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
+      cSet('spots', { spots: r.spots, map: r.map });
+      if (S.tab === 'spots' && !document.getElementById('spotDetail')) drawSpots(r, false);
+    }).catch(fail);
+  }
+  function drawSpots(r, stale) {
+    {
       var xs = r.spots.slice().sort(function (a, b) { return b.out - a.out || b.soon - a.soon || a.id.localeCompare(b.id); });
-      show(r.map ? spotMap(r.map, r.spots) : null,
+      show(stale ? staleNote() : null, r.map ? spotMap(r.map, r.spots) : null,
         el('div', { class: 'meta', text: '在庫切れの多い順です。図面の印か、下の置き場所を押すと、そこの備品と補充の履歴が出ます。' }),
         el('div', { class: 'list' }, xs.map(function (s) {
           return el('button', { class: 'item', type: 'button', onclick: function () { spotDetail(s); } },
@@ -360,7 +378,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
             el('span', { class: 'nm' }, s.name, el('div', { class: 'meta', style: 'font-weight:400', text: s.lastRefill ? '前回の補充 ' + fmt(s.lastRefill).split(' ')[0] + '・' + s.lastRefillItem : 'まだ補充の記録がありません' })),
             s.out ? el('span', { class: 'tag open', text: '在庫切れ ' + s.out }) : s.soon ? el('span', { class: 'tag doing', text: 'そろそろ ' + s.soon }) : el('span', { class: 'meta', text: s.items.length + '品目' }));
         })));
-    }).catch(fail);
+    }
   }
   /* 図面（配置図）に、置き場所ごとの在庫切れの数を印で出す。赤＝在庫切れあり、橙＝そろそろ、灰＝問題なし */
   function spotMap(m, status) {
@@ -396,7 +414,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
 
   function spotDetail(s) {
     var items = s.items.slice().sort(function (a, b) { return (b.out - a.out) || (b.soon - a.soon) || a.name.localeCompare(b.name, 'ja'); });
-    show(el('button', { class: 'btn small', type: 'button', text: '← 置き場所の一覧へ', style: 'align-self:flex-start', onclick: spotsView }),
+    show(el('button', { class: 'btn small', type: 'button', id: 'spotDetail', text: '← 置き場所の一覧へ', style: 'align-self:flex-start', onclick: spotsView }),
       el('h2', { text: s.id + '．' + s.name, style: 'font-size:18px;margin:0' }),
       items.length ? el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, items.map(function (i) {
         var line = [i.refills.length ? '補充 ' + i.refills.length + '回' : '補充の記録なし', i.avgDays ? '平均 ' + i.avgDays + '日ごとに切れる' : '', i.sinceDays != null ? '前回の補充から ' + i.sinceDays + '日' : ''].filter(Boolean).join('・');

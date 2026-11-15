@@ -19,6 +19,11 @@
       .catch(function () { bar.textContent = '画面 v' + V + '・窓口 v?（つながりません）'; });
   }
 
+  // 画面の殻を端末に持っておく（sw.js）。開くのが速くなり、電波が弱くても画面までは出る
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  }
+
   var shown = false;
   function check() {
     if (shown || document.hidden) return;
