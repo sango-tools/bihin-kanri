@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>在庫切れの報告</title>
+<style>
+:root{
+  --paper:#f5f7f9; --sheet:#fff; --ink:#1b2430; --muted:#5d6b7a; --line:#dde3ea;
+  --stamp:#c8262e; --stamp-ink:#fff; --stamp-soft:#fbe9e9; --amber:#8a5200; --amber-soft:#fdf1dc;
+  --green:#1d7a4c; --green-soft:#e2f4ea;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#12161c; --sheet:#1a2028; --ink:#e7ecf2; --muted:#9aa7b5; --line:#2b333e;
+  --stamp:#e5484d; --stamp-ink:#fff; --stamp-soft:#3a1e22; --amber:#f0b04f; --amber-soft:#3a2c14;
+  --green:#5fd39a; --green-soft:#16332a; color-scheme:dark }}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:"Hiragino Sans","Yu Gothic UI","Yu Gothic","Meiryo",sans-serif;font-size:16px;line-height:1.6;-webkit-text-size-adjust:100%}
+main{min-height:100%;max-width:480px;margin:0 auto;padding:16px 16px calc(16px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px}
+.card{background:var(--sheet);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px}
+.ph{width:100%;max-width:260px;aspect-ratio:1/1;border-radius:12px;background:var(--paper);display:grid;place-items:center;overflow:hidden}
+.ph img{width:100%;height:100%;object-fit:contain}
+.ph span{font-size:72px;font-weight:700;color:var(--muted)}
+h1{font-size:24px;line-height:1.35;margin:8px 0 0}
+.meta{color:var(--muted);font-size:14px}
+.note{border-radius:12px;padding:12px 14px;font-size:15px}
+.note.warn{background:var(--amber-soft);color:var(--amber)}
+.note.err{background:var(--stamp-soft);color:var(--stamp)}
+.spacer{flex:1}
+.go{appearance:none;border:0;border-radius:18px;background:var(--stamp);color:var(--stamp-ink);font:inherit;font-size:26px;font-weight:700;letter-spacing:.06em;min-height:34vh;width:100%;cursor:pointer;touch-action:manipulation}
+.go:active{transform:scale(.99)}
+.go[disabled]{opacity:.6}
+.go.sub{min-height:22vh;font-size:22px}
+.done{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px}
+.mark{width:96px;height:96px;border-radius:50%;background:var(--green-soft);color:var(--green);display:grid;place-items:center;font-size:56px;font-weight:700}
+.done h1{margin:0}
+.loading{flex:1;display:grid;place-items:center;color:var(--muted)}
+.retry{appearance:none;border:1px solid var(--line);background:var(--sheet);color:var(--ink);font:inherit;border-radius:12px;padding:12px;width:100%}
+</style>
+</head>
+<body>
+<main id="app"><div class="loading">読み込んでいます…</div></main>
+<script src="config.js"></script>
+<script>
+(function () {
+  var API = window.BIHIN_API || '';
+  /* 備品コードと鍵は # の後ろで受け取る（# の後ろはサーバーに送られないので、GitHub に鍵が渡らない）。
+     古い形（? の後ろ）でも読めるようにしておく。 */
+  var q = new URLSearchParams(location.hash.slice(1) || location.search);
+  var code = (q.get('i') || '').trim().toUpperCase();
+  var key = q.get('k') || '';
+  var app = document.getElementById('app');
+  var COOLDOWN_MS = 3 * 60 * 1000;
+  var sentKey = 'bihin.sent.' + code;
+
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function show() { app.replaceChildren.apply(app, arguments); }
+  function fmt(iso) { var d = new Date(iso); if (isNaN(d)) return ''; return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+  function recentlySent() { try { var t = Number(localStorage.getItem(sentKey) || 0); return t && Date.now() - t < COOLDOWN_MS; } catch (e) { return false; } }
+  function markSent() { try { localStorage.setItem(sentKey, String(Date.now())); } catch (e) {} }
+
+  function call(method, params) {
+    var ctl = 'AbortController' in window ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 15000);
+    var url = API, opt = { method: method, redirect: 'follow', signal: ctl ? ctl.signal : undefined };
+    if (method === 'GET') url += (API.indexOf('?') >= 0 ? '&' : '?') + new URLSearchParams(params).toString();
+    else { opt.headers = { 'Content-Type': 'text/plain;charset=utf-8' }; opt.body = JSON.stringify(params); }
+    return fetch(url, opt).then(function (r) { return r.json(); }).finally(function () { clearTimeout(timer); });
+  }
+
+  function fail(kind, retry) {
+    var msg = kind === 'key' || kind === 'unknown'
+      ? 'このQRコードは使えなくなっています。お手数ですが、管理部に口頭で伝えてください。'
+      : 'うまく送れませんでした。もう一度試すか、管理部に口頭で伝えてください。';
+    var nodes = [el('div', 'spacer'), el('div', 'note err', msg)];
+    if (retry) { var b = el('button', 'retry', 'もう一度試す'); b.onclick = retry; nodes.push(b); }
+    nodes.push(el('div', 'spacer'));
+    show.apply(null, nodes);
+  }
+
+  function done(open, again) {
+    var n = open && open.count > 1 ? '（これで ' + open.count + ' 人目の報告です）' : '';
+    show(el('div', 'done', null));
+    var box = app.firstChild;
+    box.append(el('div', 'mark', '✓'), el('h1', null, again ? 'さっき報告を送りました' : '管理部に届きました'),
+      el('div', 'meta', 'ありがとうございます。この画面は閉じて大丈夫です。' + n));
+  }
+
+  function card(item) {
+    var c = el('div', 'card');
+    var ph = el('div', 'ph');
+    if (item.photo) { var img = el('img'); img.alt = ''; img.src = item.photo; ph.append(img); }
+    else ph.append(el('span', null, (item.name || '?').slice(0, 1)));
+    c.append(ph, el('h1', null, item.name));
+    var m = [item.spec, item.place && '置き場所：' + item.place].filter(Boolean).join('　');
+    if (m) c.append(el('div', 'meta', m));
+    return c;
+  }
+
+  function render(data) {
+    var item = data.item, open = data.open;
+    var nodes = [card(item)];
+    var btn;
+    if (open) {
+      nodes.push(el('div', 'note warn', 'もう報告が出ています（' + fmt(open.since) + ' から・' + open.count + '人）。管理部が対応します。'));
+      btn = el('button', 'go sub', 'わたしも無かった');
+    } else {
+      btn = el('button', 'go', 'なくなりました');
+    }
+    btn.type = 'button';
+    btn.onclick = function () { send(btn); };
+    nodes.push(el('div', 'spacer'), btn);
+    show.apply(null, nodes);
+  }
+
+  function send(btn) {
+    btn.disabled = true; btn.textContent = '送っています…';
+    call('POST', { action: 'report', i: code, k: key }).then(function (r) {
+      if (!r || !r.ok) return fail(r && r.error, function () { load(); });
+      markSent(); done(r.open, false);
+    }).catch(function () { fail('net', function () { load(); }); });
+  }
+
+  function load() {
+    show(el('div', 'loading', '読み込んでいます…'));
+    call('GET', { action: 'item', i: code, k: key }).then(function (r) {
+      if (!r || !r.ok) return fail(r && r.error, r && (r.error === 'key' || r.error === 'unknown') ? null : load);
+      if (recentlySent()) return done(r.open, true);
+      render(r);
+    }).catch(function () { fail('net', load); });
+  }
+
+  if (!code || !key) {
+    show(el('div', 'spacer'), el('div', 'note warn', '備品に貼ってあるQRコードを、スマホのカメラで読んで開いてください。'), el('div', 'spacer'));
+  } else if (!API || API.indexOf('REPLACE_WITH') >= 0) {
+    fail('config', null);
+  } else {
+    load();
+  }
+})();
+</script>
+</body>
+</html>
