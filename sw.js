@@ -3,10 +3,10 @@
    - 絵・アイコンは「端末の控えを先に使う」。名前を変えない限り中身は変わらないので速い
    - GAS（script.google.com）への問い合わせ・データは、ここでは扱わない（いつも取りに行く）
    - 控える物を変えたら CACHE_VERSION を上げる（version.js の版とは別に数える） */
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const CACHE = 'bihin-shell-v' + CACHE_VERSION;
 const SHELL = [
-  './', 'index.html', 'list.html', 'kanri.html', 'config.js', 'version.js', 'verbar.js', 'manifest.webmanifest',
+  './', 'index.html', 'list.html', 'kanri.html', 'config.js', 'version.js', 'verbar.js', 'theme.css', 'manifest.webmanifest',
   'icon-32.png', 'icon-180.png', 'icon-192.png', 'icon-512.png',
   'img/already.webp', 'img/sent.webp', 'img/scan.webp', 'img/trouble.webp', 'img/login.webp', 'img/head-kanri.webp',
   'img/empty-reports.webp', 'img/photo-guide.webp',
@@ -36,7 +36,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;   // GAS・CDN はそのまま
 
-  const isPage = req.mode === 'navigate' || /\.(html|js|webmanifest)$/.test(url.pathname) || url.pathname.endsWith('/');
+  const isPage = req.mode === 'navigate' || /\.(html|js|css|webmanifest)$/.test(url.pathname) || url.pathname.endsWith('/');
   if (isPage) {
     event.respondWith(
       fetch(req)

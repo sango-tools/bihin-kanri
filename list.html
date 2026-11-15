@@ -78,12 +78,13 @@ label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
 @media (prefers-color-scheme:dark){ .scene,.it .ph img.art{opacity:.8} }
 </style>
 <link rel="icon" href="icon-32.png">
+<link rel="stylesheet" href="theme.css">
 <link rel="apple-touch-icon" href="icon-180.png">
 </head>
 <body>
 <header>
   <div class="wrap">
-    <div class="top"><h1>備品ボード</h1></div>
+    <div class="top"><h1 class="brand">備品ボード<small>管理部</small></h1></div>
     <nav id="tabs"></nav>
   </div>
 </header>
@@ -191,11 +192,14 @@ label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
     var pic = el('img', { src: catArt(it), alt: '', class: 'art', loading: 'lazy' });
     if (it.hasPhoto) { pic.dataset.code = it.code; if (io) io.observe(pic); else loadPhoto(pic); }
     var url = './#i=' + encodeURIComponent(it.code) + '&k=' + encodeURIComponent(key);
-    return el('div', { class: 'it' },
-      el('div', { class: 'ph' }, pic, it.out && el('span', { class: 'out', text: '報告済み' })),
+    // 前の作りと同じカード：左下に備品コードの札、在庫切れは写真を灰色に薄くして左上に「● 在庫切れ」、置き場所の横に「図で見る」
+    var toMap = it.spot ? el('button', { class: 'maplink', type: 'button', text: '図で見る', onclick: function () { S.mapSpot = it.spot; go('map'); } }) : null;
+    return el('div', { class: 'it' + (it.out ? ' out' : '') },
+      el('div', { class: 'ph' }, pic, el('span', { class: 'code', text: it.code }), it.out && el('span', { class: 'stamp', text: '在庫切れ' })),
       el('div', { class: 'bd' },
         el('div', { class: 'nm', text: it.name }),
-        el('div', { class: 'meta', text: [it.spec, it.place].filter(Boolean).join('　') }),
+        it.spec && el('div', { class: 'meta', text: it.spec }),
+        el('div', { class: 'meta' }, '置き場所：' + (it.place || '—') + ' ', toMap),
         el('a', { class: 'go' + (it.out ? ' done' : ''), href: url, text: it.out ? '報告済み（わたしも無かった）' : 'なくなりました' })));
   }
 

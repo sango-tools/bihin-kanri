@@ -1,0 +1,46 @@
+/* 見た目を、前の作り（備品ボード Artifact 版・単体HTML版）に寄せるための共通の決まり。
+   3つのページ（index・list・kanri）の <style> の後に読み込んで上書きする。
+   書体は前の作りと同じ Google Fonts（Dela Gothic One＝題、Zen Kaku Gothic New＝本文、IBM Plex Mono＝備品コード・数字） */
+@import url('https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap');
+
+:root{
+  --f-display:"Dela Gothic One","Hiragino Kaku Gothic StdN","Yu Gothic",sans-serif;
+  --f-body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic","Meiryo",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --shadow:0 1px 2px rgba(20,30,50,.06),0 4px 14px rgba(20,30,50,.05);
+}
+body{font-family:var(--f-body)}
+
+/* 題：「備品ボード」は太い書体、横に小さく部署名 */
+.brand{font-family:var(--f-display);font-weight:400;letter-spacing:.02em}
+.brand small{font-family:var(--f-body);font-weight:500;font-size:12px;color:var(--muted);margin-left:8px;letter-spacing:.08em}
+
+/* タブ：選ばれたタブは黒い字と青い下線（前の作りと同じ） */
+nav button{font-weight:700}
+nav button[aria-selected="true"]{color:var(--ink)!important}
+
+/* 絞り込みのボタン：選ばれたら黒地に白字 */
+.chip[aria-pressed="true"],.chip.on{background:var(--ink)!important;color:var(--paper)!important;border-color:var(--ink)!important}
+.chip.on .cn,.chip[aria-pressed="true"] .cn{color:var(--paper)!important;opacity:.8}
+
+/* 備品のカード：写真は横長（4:3）、左下に備品コードの札、在庫切れは写真を灰色に薄くして左上に「● 在庫切れ」 */
+.it,.card{box-shadow:var(--shadow)}
+.it .ph{aspect-ratio:4/3!important}
+.it .ph img:not(.art){object-fit:cover!important}
+.code{position:absolute;left:8px;bottom:8px;font-family:var(--f-mono);font-size:11px;background:var(--sheet);color:var(--muted);padding:1px 6px;border-radius:4px;z-index:1}
+.stamp{position:absolute;top:8px;left:8px;background:var(--sheet);color:var(--stamp);border:1px solid color-mix(in srgb,var(--stamp) 45%,transparent);font-size:11px;font-weight:700;padding:1px 9px;border-radius:99px;letter-spacing:.04em;display:flex;align-items:center;gap:5px;z-index:1}
+.stamp::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--stamp);display:inline-block}
+.it.out{border-color:color-mix(in srgb,var(--stamp) 35%,var(--line))}
+.it.out .ph img,.ph.out img{filter:grayscale(.85);opacity:.6}
+.card .ph .cap{bottom:30px}   /* 報告ページ：コードの札と重ならないように */
+.ph span.code{font-size:11px!important;font-weight:500!important;color:var(--muted)!important;line-height:1.6}   /* 報告ページの古い「大きな1文字」の決まりに負けないように */
+.ph span.stamp{font-size:11px!important;color:var(--stamp)!important;line-height:1.6}
+.maplink{font-size:12px;color:var(--blue);text-decoration:underline;background:none;border:0;padding:0;font:inherit;font-size:12px;cursor:pointer}
+
+/* 種類の札は角を小さく（前の作りの「在庫切れ」「リクエスト」の札） */
+.tag.kout,.tag.kreq{border-radius:4px;letter-spacing:.04em}
+.tag.kout{background:var(--stamp-soft)!important;color:var(--stamp)!important}
+.tag.kreq{background:var(--blue-soft)!important;color:var(--blue)!important}
+
+/* 数字は等幅 */
+.cn,.verbar{font-family:var(--f-mono)}

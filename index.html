@@ -50,6 +50,7 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
 @media (prefers-color-scheme:dark){ .scene,.ph.art img,.note.warn img{opacity:.85} }
 </style>
 <link rel="icon" href="icon-32.png">
+<link rel="stylesheet" href="theme.css">
 <link rel="apple-touch-icon" href="icon-180.png">
 </head>
 <body>
@@ -115,11 +116,13 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
       el('div', 'meta', 'ありがとうございます。この画面は閉じて大丈夫です。' + n));
   }
 
-  function card(item) {
+  function card(item, out) {
     var c = el('div', 'card');
-    var ph = el('div', 'ph');
+    var ph = el('div', 'ph' + (out ? ' out' : ''));
     if (item.photo) ph.append(img(item.photo));
-    else { ph.className = 'ph art'; ph.append(img(catArt(item)), el('div', 'cap', '写真はまだありません（絵は分類の目安）')); }
+    else { ph.className = 'ph art' + (out ? ' out' : ''); ph.append(img(catArt(item)), el('div', 'cap', '写真はまだありません（絵は分類の目安）')); }
+    ph.append(el('span', 'code', item.code));   // 前の作りと同じ、左下の備品コードの札
+    if (out) ph.append(el('span', 'stamp', '在庫切れ'));
     c.append(ph, el('h1', null, item.name));
     var m = [item.spec, item.place && '置き場所：' + item.place].filter(Boolean).join('　');
     if (m) c.append(el('div', 'meta', m));
@@ -128,7 +131,7 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
 
   function render(data) {
     var item = data.item, open = data.open;
-    var nodes = [card(item)];
+    var nodes = [card(item, !!open)];
     var btn;
     if (open) {
       var w = el('div', 'note warn');
