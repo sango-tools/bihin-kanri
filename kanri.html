@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>備品ボード 管理</title>
+<style>
+:root{
+  --paper:#f5f7f9; --sheet:#fff; --ink:#1b2430; --muted:#5d6b7a; --line:#dde3ea;
+  --blue:#2346b8; --blue-soft:#e6ecfb; --stamp:#c8262e; --stamp-soft:#fbe9e9;
+  --amber:#8a5200; --amber-soft:#fdf1dc; --green:#1d7a4c; --green-soft:#e2f4ea;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#12161c; --sheet:#1a2028; --ink:#e7ecf2; --muted:#9aa7b5; --line:#2b333e;
+  --blue:#8ea8ff; --blue-soft:#222c48; --stamp:#ff6b6f; --stamp-soft:#3a1e22;
+  --amber:#f0b04f; --amber-soft:#3a2c14; --green:#5fd39a; --green-soft:#16332a; color-scheme:dark }}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:"Hiragino Sans","Yu Gothic UI","Yu Gothic","Meiryo",sans-serif;font-size:16px;line-height:1.6;-webkit-text-size-adjust:100%}
+header{position:sticky;top:0;z-index:2;background:var(--sheet);border-bottom:1px solid var(--line)}
+.wrap{max-width:560px;margin:0 auto;padding:0 16px}
+html,body{overflow-x:hidden}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;padding:10px 0 4px}
+.top h1{font-size:17px;margin:0;flex:1 1 auto;min-width:0}
+.who{order:3;flex-basis:100%;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+nav{display:flex;gap:4px}
+nav button{flex:1;appearance:none;border:0;background:none;font:inherit;font-size:15px;padding:10px 0;color:var(--muted);border-bottom:3px solid transparent;cursor:pointer}
+nav button[aria-selected="true"]{color:var(--blue);border-bottom-color:var(--blue);font-weight:700}
+main{padding:16px 0 40px;display:flex;flex-direction:column;gap:12px}
+.card{background:var(--sheet);border:1px solid var(--line);border-radius:14px;padding:14px}
+label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
+input[type=text],input[type=password],input[type=search]{width:100%;font:inherit;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--sheet);color:var(--ink)}
+.btn{appearance:none;border:1px solid var(--line);background:var(--sheet);color:var(--ink);font:inherit;border-radius:10px;padding:10px 14px;cursor:pointer}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700}
+.btn.done{background:var(--green);border-color:var(--green);color:#fff;font-weight:700}
+.btn.wide{width:100%;padding:14px;font-size:17px}
+.btn.small{padding:6px 10px;font-size:13px}
+.btn[disabled]{opacity:.55}
+.msg{font-size:14px;border-radius:10px;padding:10px 12px}
+.msg.err{background:var(--stamp-soft);color:var(--stamp)}
+.msg.ok{background:var(--green-soft);color:var(--green)}
+.meta{font-size:13px;color:var(--muted)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tag{font-size:12px;border-radius:999px;padding:2px 10px;font-weight:700}
+.tag.open{background:var(--stamp-soft);color:var(--stamp)}
+.tag.doing{background:var(--amber-soft);color:var(--amber)}
+.tag.has{background:var(--green-soft);color:var(--green)}
+.tag.none{background:var(--paper);color:var(--muted);border:1px solid var(--line)}
+.rep h2{font-size:17px;margin:4px 0 2px}
+.rep .ops{display:flex;gap:8px;margin-top:10px}
+.rep .ops .btn{flex:1}
+.list{display:flex;flex-direction:column;gap:6px}
+.item{display:flex;align-items:center;gap:10px;background:var(--sheet);border:1px solid var(--line);border-radius:12px;padding:12px;cursor:pointer;text-align:left;font:inherit;color:inherit;width:100%}
+.item .nm{flex:1;font-weight:700}
+.ph{width:100%;aspect-ratio:1/1;max-width:300px;margin:0 auto;border-radius:12px;background:var(--paper);display:grid;place-items:center;overflow:hidden}
+.ph img{width:100%;height:100%;object-fit:contain}
+.ph span{color:var(--muted);font-size:14px}
+.empty{text-align:center;color:var(--muted);padding:30px 0}
+</style>
+</head>
+<body>
+<header id="hd" hidden>
+  <div class="wrap">
+    <div class="top"><h1>備品ボード 管理</h1><span class="who" id="who"></span><button class="btn small" id="out" type="button">ログアウト</button></div>
+    <nav id="tabs"></nav>
+  </div>
+</header>
+<main class="wrap" id="app"><div class="empty">読み込んでいます…</div></main>
+<script src="config.js"></script>
+<script>
+(function () {
+  var API = window.BIHIN_API || '';
+  var KEY = 'bihin.session';
+  var app = document.getElementById('app');
+  var S = { sess: null, tab: null, items: [], q: '' };
+
+  function el(tag, attrs) {
+    var e = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (k === 'text') e.textContent = attrs[k];
+      else if (k.slice(0, 2) === 'on') e[k] = attrs[k];
+      else if (attrs[k] != null && attrs[k] !== false) e.setAttribute(k, attrs[k]);
+    }
+    for (var i = 2; i < arguments.length; i++) { var c = arguments[i]; if (c != null && c !== false) e.append(c); }
+    return e;
+  }
+  function show() { app.replaceChildren.apply(app, Array.prototype.filter.call(arguments, Boolean)); }
+  function fmt(iso) { var d = new Date(iso); if (isNaN(d)) return ''; return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+
+  function loadSess() { try { var s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s && s.exp > Date.now()) return s; } catch (e) {} return null; }
+  function saveSess(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} }
+  function clearSess() { try { localStorage.removeItem(KEY); } catch (e) {} }
+
+  function call(body) {
+    var ctl = 'AbortController' in window ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 30000);
+    if (S.sess) body.t = S.sess.token;
+    return fetch(API, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { return r.json(); })
+      .then(function (r) { if (r && r.error === 'auth') { logout(true); throw { handled: true }; } return r; })
+      .finally(function () { clearTimeout(timer); });
+  }
+  var ERR = { login: 'ID かパスワードが違います。', locked: '続けて間違えたため、15分止めています。時間をおいて試してください。', role: 'この役割ではできない操作です。',
+    too_large: '写真が大き過ぎます。', photo: '写真を読めませんでした。別の写真で試してください。', unknown: '見つかりませんでした。一覧を読み直してください。', busy: '混み合っています。もう一度押してください。' };
+  function errText(r) { return (r && ERR[r.error]) || 'うまくいきませんでした。電波の良い所でもう一度試してください。'; }
+
+  /* ---------- ログイン ---------- */
+  function loginView(note) {
+    document.getElementById('hd').hidden = true;
+    var id = el('input', { type: 'text', id: 'uid', autocomplete: 'username', autocapitalize: 'off', spellcheck: 'false' });
+    var pw = el('input', { type: 'password', id: 'upw', autocomplete: 'current-password' });
+    var msg = el('div');
+    var go = el('button', { class: 'btn primary wide', type: 'submit', text: 'ログイン' });
+    var form = el('form', { class: 'card' },
+      el('h1', { text: '備品ボード 管理', style: 'font-size:20px;margin:0 0 4px' }),
+      el('div', { class: 'meta', text: '写真係・管理部の人だけが使うページです。ID とパスワードは管理している人から受け取ってください。' }),
+      el('label', { for: 'uid', text: 'ID' }), id,
+      el('label', { for: 'upw', text: 'パスワード' }), pw,
+      el('div', { style: 'height:12px' }), msg, el('div', { style: 'height:8px' }), go);
+    form.onsubmit = function (e) {
+      e.preventDefault();
+      if (!id.value.trim() || !pw.value) { msg.className = 'msg err'; msg.textContent = 'ID とパスワードを入れてください。'; return; }
+      go.disabled = true; go.textContent = '確かめています…'; msg.className = ''; msg.textContent = '';
+      call({ action: 'login', id: id.value.trim(), pw: pw.value }).then(function (r) {
+        if (!r.ok) { msg.className = 'msg err'; msg.textContent = errText(r); go.disabled = false; go.textContent = 'ログイン'; return; }
+        S.sess = { token: r.token, user: r.user, exp: Date.now() + (r.expiresIn - 60) * 1000 };
+        saveSess(S.sess); pw.value = ''; start();
+      }).catch(function () { msg.className = 'msg err'; msg.textContent = errText(null); go.disabled = false; go.textContent = 'ログイン'; });
+    };
+    show(note ? el('div', { class: 'msg err', text: note }) : null, form);
+    id.focus();
+  }
+
+  function logout(expired) {
+    if (S.sess && !expired) call({ action: 'logout' }).catch(function () {});
+    S.sess = null; clearSess();
+    loginView(expired ? 'ログインの期限が切れました。もう一度ログインしてください。' : null);
+  }
+  document.getElementById('out').onclick = function () { logout(false); };
+
+  /* ---------- 骨組み ---------- */
+  function start() {
+    var u = S.sess.user;
+    var tabs = u.role === '管理部' ? [['reports', '報告'], ['photos', '写真']] : [['photos', '写真']];
+    if (!S.tab || !tabs.some(function (t) { return t[0] === S.tab; })) S.tab = tabs[0][0];
+    document.getElementById('hd').hidden = false;
+    document.getElementById('who').textContent = u.name + '（' + u.role + '）';
+    var nav = document.getElementById('tabs');
+    nav.replaceChildren.apply(nav, tabs.map(function (t) {
+      return el('button', { type: 'button', role: 'tab', 'aria-selected': String(S.tab === t[0]), text: t[1], onclick: function () { S.tab = t[0]; start(); } });
+    }));
+    if (S.tab === 'reports') reportsView(); else photosView();
+  }
+
+  /* ---------- 管理部：報告 ---------- */
+  function reportsView(flash) {
+    show(el('div', { class: 'empty', text: '報告を読み込んでいます…' }));
+    call({ action: 'reports' }).then(function (r) {
+      if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
+      var head = el('div', { class: 'row' }, el('div', { class: 'meta', style: 'flex:1', text: '未対応・対応中 ' + r.reports.length + '件（補充済みは出しません）' }),
+        el('button', { class: 'btn small', type: 'button', text: '読み直す', onclick: function () { reportsView(); } }));
+      if (!r.reports.length) return show(flash, head, el('div', { class: 'empty', text: 'いま出ている報告はありません。' }));
+      show.apply(null, [flash, head].concat(r.reports.map(repCard)));
+    }).catch(function (e) { if (!e || !e.handled) show(el('div', { class: 'msg err', text: errText(null) })); });
+  }
+
+  function repCard(x) {
+    var doing = x.state === '対応中';
+    var ops = el('div', { class: 'ops' });
+    function act(state, btn) {
+      btn.disabled = true;
+      call({ action: 'setState', id: x.id, state: state }).then(function (r) {
+        if (!r.ok) { btn.disabled = false; return alert(errText(r)); }
+        reportsView(el('div', { class: 'msg ok', text: x.name + ' を「' + state + '」にしました。' }));
+      }).catch(function (e) { btn.disabled = false; if (!e || !e.handled) alert(errText(null)); });
+    }
+    if (!doing) { var b1 = el('button', { class: 'btn', type: 'button', text: '対応中にする' }); b1.onclick = function () { act('対応中', b1); }; ops.append(b1); }
+    var b2 = el('button', { class: 'btn done', type: 'button', text: '補充済みにする' }); b2.onclick = function () { act('補充済み', b2); }; ops.append(b2);
+    return el('div', { class: 'card rep' },
+      el('div', { class: 'row' }, el('span', { class: 'tag ' + (doing ? 'doing' : 'open'), text: x.state }), el('span', { class: 'meta', text: x.code })),
+      el('h2', { text: x.name }),
+      el('div', { class: 'meta', text: [x.place && '置き場所：' + x.place, fmt(x.since) + ' から・' + x.count + '人', doing && x.by ? '対応：' + x.by : ''].filter(Boolean).join('　') }),
+      ops);
+  }
+
+  /* ---------- 写真係：写真 ---------- */
+  function photosView() {
+    show(el('div', { class: 'empty', text: '備品を読み込んでいます…' }));
+    call({ action: 'items' }).then(function (r) {
+      if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
+      S.items = r.items; drawList();
+    }).catch(function (e) { if (!e || !e.handled) show(el('div', { class: 'msg err', text: errText(null) })); });
+  }
+
+  function drawList() {
+    var q = el('input', { type: 'search', placeholder: '名前・備品コードで絞り込み', value: S.q, 'aria-label': '絞り込み' });
+    var list = el('div', { class: 'list' });
+    function fill() {
+      var k = S.q.trim().toLowerCase();
+      var xs = S.items.filter(function (it) { return !k || (it.name + ' ' + it.code).toLowerCase().indexOf(k) >= 0; });
+      var none = S.items.filter(function (it) { return !it.hasPhoto; }).length;
+      list.replaceChildren.apply(list, [el('div', { class: 'meta', text: '写真が無い備品：' + none + '件' })].concat(xs.map(function (it) {
+        return el('button', { class: 'item', type: 'button', onclick: function () { photoView(it); } },
+          el('span', { class: 'nm', text: it.name }), el('span', { class: 'meta', text: it.code }),
+          el('span', { class: 'tag ' + (it.hasPhoto ? 'has' : 'none'), text: it.hasPhoto ? '写真あり' : '写真なし' }));
+      })));
+    }
+    q.oninput = function () { S.q = q.value; fill(); };
+    fill();
+    show(q, list);
+  }
+
+  function photoView(it, flash) {
+    var ph = el('div', { class: 'ph' }, el('span', { text: it.hasPhoto ? '写真を読み込んでいます…' : 'まだ写真がありません' }));
+    if (it.hasPhoto) call({ action: 'photo', i: it.code }).then(function (r) {
+      if (r.ok && r.photo) ph.replaceChildren(el('img', { src: r.photo, alt: '' }));
+    }).catch(function () {});
+    var file = el('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true });
+    var preview = null, msg = el('div');
+    var pick = el('button', { class: 'btn wide', type: 'button', text: it.hasPhoto ? 'カメラで撮り直す・写真を選ぶ' : 'カメラで撮る・写真を選ぶ', onclick: function () { file.click(); } });
+    var save = el('button', { class: 'btn primary wide', type: 'button', text: 'この写真で登録する', hidden: true });
+    file.onchange = function () {
+      var f = file.files[0]; if (!f) return;
+      msg.className = 'meta'; msg.textContent = '写真を整えています…';
+      shrink(f, 640, 0.8).then(function (data) {
+        preview = data; ph.replaceChildren(el('img', { src: data, alt: '' }));
+        save.hidden = false; msg.textContent = '備品だけが写っているか確かめてから登録してください（人・書類・画面が写り込んだ物は使わない）。';
+      }).catch(function () { msg.className = 'msg err'; msg.textContent = '写真を読めませんでした。別の写真で試してください。'; });
+    };
+    save.onclick = function () {
+      if (!preview) return;
+      save.disabled = true; save.textContent = '登録しています…';
+      call({ action: 'uploadPhoto', i: it.code, data: preview }).then(function (r) {
+        if (!r.ok) { save.disabled = false; save.textContent = 'この写真で登録する'; msg.className = 'msg err'; msg.textContent = errText(r); return; }
+        it.hasPhoto = true;
+        photoView(it, el('div', { class: 'msg ok', text: '登録しました。QR を読むと、この写真が出ます。' }));
+      }).catch(function (e) { save.disabled = false; save.textContent = 'この写真で登録する'; if (!e || !e.handled) { msg.className = 'msg err'; msg.textContent = errText(null); } });
+    };
+    show(flash,
+      el('button', { class: 'btn small', type: 'button', text: '← 一覧へ', style: 'align-self:flex-start', onclick: drawList }),
+      el('div', { class: 'card' },
+        el('div', { class: 'row' }, el('span', { class: 'meta', text: it.code }), el('span', { class: 'tag ' + (it.hasPhoto ? 'has' : 'none'), text: it.hasPhoto ? '写真あり' : '写真なし' })),
+        el('h2', { text: it.name, style: 'font-size:19px;margin:4px 0' }),
+        el('div', { class: 'meta', text: [it.spec, it.place && '置き場所：' + it.place].filter(Boolean).join('　') }),
+        el('div', { style: 'height:10px' }), ph, el('div', { style: 'height:10px' }), msg, el('div', { style: 'height:8px' }), pick, el('div', { style: 'height:8px' }), save, file));
+  }
+
+  /** 写真を長い辺 max px の JPEG にする（送る量を減らし、位置情報などの付帯情報も落ちる） */
+  function shrink(file, max, q) {
+    return new Promise(function (res, rej) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        var s = Math.min(1, max / Math.max(img.width, img.height));
+        var c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', q));
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); rej(); };
+      img.src = url;
+    });
+  }
+
+  if (!API || API.indexOf('REPLACE_WITH') >= 0) { show(el('div', { class: 'msg err', text: '設定がまだです（config.js）。' })); return; }
+  S.sess = loadSess();
+  if (S.sess) start(); else loginView();
+})();
+</script>
+</body>
+</html>
