@@ -49,6 +49,9 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
 .meav{width:36px;height:36px;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center}
 .meav svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8}
 .mename{font-weight:700;font-size:14px}
+.popWrap{position:fixed;inset:0;z-index:30;background:rgba(20,30,50,.38);display:flex;align-items:flex-start;justify-content:center;padding:70px 12px 12px}
+.popPanel{background:var(--paper);border-radius:16px;box-shadow:0 12px 32px rgba(0,0,0,.25);width:min(560px,100%);max-height:calc(100vh - 90px);display:flex;flex-direction:column;gap:10px;padding:14px}
+.popBody{overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-bottom:4px}
 .setsec{display:flex;flex-direction:column;gap:10px}
 .setsec h3{font-size:15px;margin:6px 0 0}
 .qrgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}
@@ -272,22 +275,33 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   function markNewsRead() { try { localStorage.setItem('bihin.news.seen', JSON.stringify(NEWS.map(newsKey))); } catch (e) {} }
   function drawNewsDot() { document.getElementById('newsDot').hidden = !unreadNews().length; }
   document.getElementById('news').onclick = function () { newsView('feature'); };
+  /* お知らせは画面を移らず、上に重ねて出す（2026-11-15 木村さん）。外を押すか × か Esc で閉じる */
+  var newsUnread = null;   // 開いた時点の「新しい」を控える（開いた瞬間に既読にするため）
   function newsView(type) {
-    var unread = unreadNews();
+    if (!newsUnread) newsUnread = unreadNews();
+    var unread = newsUnread;
     var cnt = function (t) { return unread.filter(function (n) { return n.type === t; }).length; };
     var tabs = el('div', { class: 'row', style: 'gap:6px' }, [['feature', '新しい機能'], ['fix', '直したこと']].map(function (t) {
       return el('button', { class: 'chip' + (type === t[0] ? ' on' : ''), type: 'button', onclick: function () { newsView(t[0]); } }, t[1], cnt(t[0]) ? el('span', { class: 'cn', text: '新 ' + cnt(t[0]) }) : null);
     }));
     var isNew = {}; unread.forEach(function (n) { isNew[newsKey(n)] = 1; });
     var xs = NEWS.filter(function (n) { return n.type === type; });
-    show(el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', text: '← 戻る', onclick: function () { markNewsRead(); drawNewsDot(); start(); } }),
-        el('span', { class: 'meta', style: 'margin-left:auto', text: '画面 v' + (window.BIHIN_VERSION || '?') })),
-      el('h2', { text: 'お知らせ', style: 'font-size:18px;margin:0' }), tabs,
-      xs.length ? el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, xs.map(function (n) {
+    var close = el('button', { class: 'ibtn', type: 'button', 'aria-label': '閉じる', text: '×', style: 'font-size:20px', onclick: closeNews });
+    var panel = el('div', { class: 'popPanel', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'お知らせ' },
+      el('div', { class: 'row', style: 'flex-wrap:nowrap' }, el('h2', { text: 'お知らせ', style: 'font-size:18px;margin:0;flex:1' }),
+        el('span', { class: 'meta', text: '画面 v' + (window.BIHIN_VERSION || '?') }), close),
+      tabs,
+      el('div', { class: 'popBody' }, xs.length ? xs.map(function (n) {
         return el('div', { class: 'card' }, el('div', { class: 'row' }, el('span', { class: 'meta', text: n.date }), isNew[newsKey(n)] ? el('span', { class: 'tag open', text: '新しい' }) : null), el('div', { text: n.text, style: 'margin-top:4px' }));
-      })) : el('div', { class: 'empty', text: 'まだありません。' }));
+      }) : el('div', { class: 'empty', text: 'まだありません。' })));
+    var old = document.getElementById('newsPop'); if (old) old.remove();
+    var pop = el('div', { class: 'popWrap', id: 'newsPop', onclick: function (e) { if (e.target === pop) closeNews(); } }, panel);
+    document.body.append(pop);
     markNewsRead(); drawNewsDot();
+    close.focus();
   }
+  function closeNews() { var p = document.getElementById('newsPop'); if (p) p.remove(); newsUnread = null; }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeNews(); });
 
   /* ---------- 骨組み ---------- */
   function start() {
@@ -315,6 +329,8 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   function settingsView() {
     var u = S.sess && S.sess.user;
     if (!u) return;
+    // 設定を開いている間は、上のタブのどれも選ばれていない見た目にする（どのタブの中でもないため）
+    document.querySelectorAll('#tabs button').forEach(function (b) { b.setAttribute('aria-selected', 'false'); });
     function choice(label, key, opts) {
       return el('div', {}, el('div', { class: 'meta', text: label, style: 'margin-bottom:4px' }), el('div', { class: 'row', style: 'gap:6px' }, opts.map(function (o) {
         return el('button', { class: 'chip' + (PREF[key] === o[0] ? ' on' : ''), type: 'button', text: o[1], onclick: function () {
