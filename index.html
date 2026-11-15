@@ -185,7 +185,8 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
 
   function send(btn) {
     btn.disabled = true; btn.textContent = '送っています…';
-    call('POST', { action: 'report', i: code, k: key }).then(function (r) {
+    var unbusy = window.bihinBusy ? window.bihinBusy('管理部に送っています…') : function () {};
+    call('POST', { action: 'report', i: code, k: key }).finally(unbusy).then(function (r) {
       if (!r || !r.ok) return fail(r && r.error, function () { load(); });
       markSent(); done(r.open, false);
     }).catch(function () { fail('net', function () { load(); }); });

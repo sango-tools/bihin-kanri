@@ -233,7 +233,7 @@ label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
         el('div', { class: 'nm', text: it.name }),
         it.spec && el('div', { class: 'meta', text: it.spec }),
         el('div', { class: 'meta' }, '置き場所：' + (it.place || '—') + ' ', toMap),
-        el('a', { class: 'go' + (it.out ? ' done' : ''), href: url, text: it.out ? '報告済み（わたしも無かった）' : 'なくなりました' })));
+        el('a', { class: 'go' + (it.out ? ' done' : ''), href: url, text: it.out ? 'わたしも無かった' : 'なくなりました' })));
   }
 
   /* ---------- 一覧 ---------- */
@@ -329,7 +329,7 @@ label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
       text.oninput = function () { try { localStorage.setItem('bihin.want.draft', text.value); } catch (e) {} };
       var msg = el('div');
       var send = el('button', { class: 'btn primary wide', type: 'submit', text: '管理部に送る' });
-      var form = el('form', { class: 'card' },
+      var form = el('form', { class: 'card formNarrow' },
         el('h2', { text: 'ほしい物を伝える', style: 'font-size:17px;margin:0' }),
         el('div', { class: 'meta', text: '無くなった物・置いてほしい物を、一言で管理部に頼めます。書いた内容と返事は、このQRを読んだ人みんなが見られます（名前は管理部だけが見ます）。社外のことは書かないでください。' }),
         el('label', { for: 'wtext', text: 'ほしい物（200字まで）' }), text,
@@ -341,7 +341,8 @@ label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
         if (!text.value.trim()) { msg.className = 'msg err'; msg.textContent = 'ほしい物を書いてください。'; return; }
         if (!name.value.trim()) { msg.className = 'msg err'; msg.textContent = 'あなたの名前を書いてください（管理部だけが見ます）。'; name.focus(); return; }
         send.disabled = true; send.textContent = '送っています…';
-        post({ action: 'want', text: text.value, name: name.value, item: sel.value }).then(function (r) {
+        var unbusy = window.bihinBusy ? window.bihinBusy('管理部に送っています…') : function () {};
+        post({ action: 'want', text: text.value, name: name.value, item: sel.value }).finally(unbusy).then(function (r) {
           if (!r || !r.ok) {
             send.disabled = false; send.textContent = '管理部に送る'; msg.className = 'msg err';
             msg.textContent = r && r.error === 'name' ? 'あなたの名前を書いてください。' : r && r.error === 'too_long' ? '200字までにしてください。' : r && r.error === 'busy' ? '混み合っています。少し待ってから送ってください。' : '送れませんでした。電波の良い所でもう一度送ってください。';

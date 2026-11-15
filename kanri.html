@@ -145,7 +145,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
 </head>
 <body>
 <header id="hd" hidden>
-  <div class="wrap">
+  <div class="wrap adm">
     <div class="top"><img class="brandIcon" src="icon-180.png" alt=""><h1 class="brand">備品ボード<small>管理用</small></h1>
       <div class="hacts">
         <button class="ibtn" id="news" type="button" aria-label="お知らせ" title="お知らせ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><span id="newsDot" class="ndot" hidden></span></button>
@@ -160,7 +160,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   <div class="mehead"><div class="meav"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div><div id="who" class="mename"></div></div>
   <button class="btn" id="out" type="button" role="menuitem">ログアウト</button>
 </div>
-<main class="wrap" id="app"><div class="empty">読み込んでいます…</div></main>
+<main class="wrap adm" id="app"><div class="empty">読み込んでいます…</div></main>
 <script src="config.js"></script>
 <script src="version.js"></script>
 <script src="verbar.js" defer></script>
@@ -205,12 +205,16 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     var ctl = 'AbortController' in window ? new AbortController() : null;
     var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 30000);
     if (S.sess) body.t = S.sess.token;
+    // 書き込む操作の間は、画面を暗くしてぐるぐるを出す（二度押し・ほかの操作との重なりを防ぐ）。読むだけの物は出さない
+    var READ = { me: 1, items: 1, photo: 1, tasks: 1, spotStatus: 1, itemsAdmin: 1, usersList: 1, notifyGet: 1, qrUrls: 1, logout: 1 };
+    var LABEL = { login: 'ログインしています…', firstLogin: 'ログインしています…', uploadPhoto: '写真を登録しています…', myPw: 'パスワードを変えています…' };
+    var unbusy = !READ[body.action] && window.bihinBusy ? window.bihinBusy(LABEL[body.action] || '送っています…') : function () {};
     var at = S.seq;   // 失敗した時に、もう別の画面に移っていたら、その画面を消さない（fail を見る）
     return fetch(API, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), signal: ctl ? ctl.signal : undefined })
       .then(function (r) { return r.json(); })
       .then(function (r) { if (r && r.error === 'auth') { logout(true); throw { handled: true }; } return r; })
       .catch(function (e) { if (e && typeof e === 'object' && !e.handled) { try { e.seq = at; } catch (x) {} } throw e; })
-      .finally(function () { clearTimeout(timer); });
+      .finally(function () { clearTimeout(timer); unbusy(); });
   }
   var ERR = { login: 'ID かパスワードが違います。', locked: '続けて間違えたため、15分止めています。時間をおいて試してください。', role: 'この役割ではできない操作です。',
     name: '名前を入れてください。', in_use: '使っている人は消せません。', self: '自分は消せません。',
@@ -241,7 +245,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     form.onsubmit = function (e) {
       e.preventDefault();
       if (!id.value.trim() || !pw.value) { msg.className = 'msg err'; msg.textContent = 'ID とパスワードを入れてください。'; return; }
-      go.disabled = true; go.textContent = '確かめています…'; msg.className = ''; msg.textContent = '';
+      go.disabled = true; go.textContent = 'ログインしています…'; msg.className = ''; msg.textContent = '';
       call({ action: 'login', id: id.value.trim(), pw: pw.value }).then(function (r) {
         if (!r.ok) { msg.className = 'msg err'; msg.textContent = errText(r); go.disabled = false; go.textContent = 'ログイン'; return; }
         S.sess = { token: r.token, user: r.user, exp: Date.now() + (r.expiresIn - 60) * 1000 };
@@ -280,7 +284,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
       if (!id.value.trim() || !/^\d{6}$/.test(c)) { msg.textContent = 'ID と、6桁のはじめのコードを入れてください。'; return; }
       if (n1.value.length < 8) { msg.textContent = 'パスワードは8文字以上にしてください。'; return; }
       if (n1.value !== n2.value) { msg.textContent = 'パスワードが2回とも同じか確かめてください。'; return; }
-      go.disabled = true; go.textContent = '確かめています…'; msg.className = ''; msg.textContent = '';
+      go.disabled = true; go.textContent = 'ログインしています…'; msg.className = ''; msg.textContent = '';
       var again = function (t) { msg.className = 'msg err'; msg.textContent = t; go.disabled = false; go.textContent = 'パスワードを決めてログイン'; };
       call({ action: 'firstLogin', id: id.value.trim(), code: c, pw: n1.value }).then(function (r) {
         if (!r.ok) return again(USER_ERR[r.error] || errText(r));
@@ -355,7 +359,12 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     close.focus();
   }
   function closeNews() { var p = document.getElementById('newsPop'); if (p) p.remove(); newsUnread = null; }
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeNews(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (document.getElementById('newsPop')) return closeNews();
+    if (document.querySelector('.busy')) return;   // 送っている間は動かさない
+    if (S.inSettings && S.sess) start();           // 設定（利用者の画面を含む）を閉じて、元のタブへ
+  });
 
   /* 名前の横は所属（例：工事部）。所属が空なら役割。役割（できること）は下に小さく */
   function whoText(u) { return u.name + '（' + (u.dept || u.role) + '）'; }
@@ -384,6 +393,9 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     }
     drawNewsDot();
     var nav = document.getElementById('tabs');
+    nav.hidden = tabs.length < 2;   // タブが1つ（写真係）の時は、タブの形を出さない
+    document.querySelector('.brand small').textContent = tabs.length < 2 ? '写真の登録' : '管理用';
+    S.inSettings = false;
     nav.replaceChildren.apply(nav, tabs.map(function (t) {
       return el('button', { type: 'button', role: 'tab', 'aria-selected': String(S.tab === t[0]), text: t[1], onclick: function () { S.tab = t[0]; start(); } });
     }));
@@ -402,6 +414,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     var u = S.sess && S.sess.user;
     if (!u) return;
     var my = ++S.seq;   // 画面の番号。返事が遅れて届いた時に、移った後の画面を上書きしないため（どの画面も同じ）
+    S.inSettings = true;   // Esc で閉じる（元のタブに戻る）
     // 設定を開いている間は、上のタブのどれも選ばれていない見た目にする（どのタブの中でもないため）
     document.querySelectorAll('#tabs button').forEach(function (b) { b.setAttribute('aria-selected', 'false'); });
     function choice(label, key, opts) {
@@ -824,17 +837,21 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   }
 
   function spotsCard() {
-    var rows = S.spots.map(function (s) {
-      var inp = el('input', { type: 'text', value: s.name, maxlength: '30', 'aria-label': s.id + ' の名前' });
-      var b = el('button', { class: 'btn small', type: 'button', text: '保存' });
-      b.onclick = function () {
-        b.disabled = true;
-        call({ action: 'spotSave', id: s.id, name: inp.value }).then(function (r) { b.disabled = false; b.textContent = r.ok ? '保存しました' : '保存できません'; if (r.ok) S.spots = r.spots; }).catch(function (e) { b.disabled = false; fail(e); });
-      };
-      return el('div', { class: 'row', style: 'flex-wrap:nowrap;margin-top:6px' }, el('b', { text: s.id, style: 'width:20px' }), inp, b);
-    });
-    return el('div', { class: 'card' }, el('h2', { text: '置き場所の名前', style: 'font-size:16px;margin:0' }),
-      el('div', { class: 'meta', text: 'マップの A〜F の名前です。変えると、一覧・報告ページ・通知の表示も変わります。' }), rows);
+    // 保存のボタンは1つ。変えた所だけを順に送る
+    var inps = S.spots.map(function (s) { return { s: s, inp: el('input', { type: 'text', value: s.name, maxlength: '30', 'aria-label': s.id + ' の名前' }) }; });
+    var rows = inps.map(function (x) { return el('div', { class: 'row', style: 'flex-wrap:nowrap;margin-top:6px' }, el('b', { text: x.s.id, style: 'width:20px' }), x.inp); });
+    var msg = el('div', { class: 'meta' });
+    var b = el('button', { class: 'btn small primary', type: 'button', text: '保存する', style: 'align-self:flex-start;margin-top:8px' });
+    b.onclick = function () {
+      var changed = inps.filter(function (x) { return x.inp.value.trim() && x.inp.value.trim() !== x.s.name; });
+      if (!changed.length) { msg.textContent = '変えた所はありません。'; return; }
+      b.disabled = true;
+      changed.reduce(function (p, x) { return p.then(function () { return call({ action: 'spotSave', id: x.s.id, name: x.inp.value }).then(function (r) { if (!r.ok) throw r; S.spots = r.spots; x.s.name = x.inp.value.trim(); }); }); }, Promise.resolve())
+        .then(function () { b.disabled = false; msg.textContent = changed.length + ' か所の名前を保存しました。'; })
+        .catch(function (e) { b.disabled = false; if (e && e.ok === false) msg.textContent = errText(e); else fail(e); });
+    };
+    return el('div', { class: 'card', style: 'display:flex;flex-direction:column' }, el('h2', { text: '置き場所の名前', style: 'font-size:16px;margin:0' }),
+      el('div', { class: 'meta', text: 'マップの A〜F の名前です。変えると、一覧・報告ページ・通知の表示も変わります。' }), rows, b, msg);
   }
 
   function notifyCard() {
@@ -876,7 +893,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
         show(el('div', { class: 'row noprint' },
             el('button', { class: 'btn small', type: 'button', text: '← 備品の一覧へ', onclick: function () { itemsView(); } }),
             el('button', { class: 'btn primary', type: 'button', text: '印刷する', onclick: function () { window.print(); } })),
-          el('div', { class: 'msg noprint', style: 'background:var(--amber-soft);color:var(--amber)', text: '切り取って、備品の箱・トレイの正面に貼ってください。札には鍵が入っています。社外に出さないでください。' }),
+          el('div', { class: 'msg noprint', style: 'background:var(--amber-soft);color:var(--amber)', text: '切り取って、備品の箱・トレイの正面に貼ってください。札の QR は社内専用です。社外に出さない・写真に撮って外に送らないでください。' }),
           grid);
       });
     }).catch(fail);
