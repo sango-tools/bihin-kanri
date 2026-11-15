@@ -418,6 +418,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   /* ---------- 設定：利用者（アカウント）の発行・変更（管理部だけ） ---------- */
   var USER_ERR = { id: 'ID は英数字と . _ - で3〜30文字にしてください。', id_taken: 'その ID はもう使われています。', pw_short: 'パスワードは8文字以上にしてください。',
     last_admin: '管理部が誰もいなくなるので、この変更はできません（ほかに管理部の人を先に足してください）。', unknown: 'その利用者が見つかりません。読み直してください。',
+    in_use: '使っている人は消せません。先に「使う」を外して保存してください。', self: '自分は消せません。',
     code: 'ID かはじめのコードが違います。数字を確かめてください。', code_expired: 'はじめのコードの期限（7日）が切れています。管理部の人に新しいコードを出してもらってください。' };
   function md(iso) { var t = new Date(iso); return (t.getMonth() + 1) + '/' + t.getDate(); }
   function pwState(x) {
@@ -461,6 +462,17 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     var fdept = f('uDept', '所属（表示だけ）', d.dept, '例：管理部');
     var frole = el('select', { id: 'uRole' }, (S.roles || ['管理部', '写真係']).map(function (r) { return el('option', { value: r, text: r + (r === '管理部' ? '（連絡の対応・備品・設定まで全部）' : '（写真の登録だけ）'), selected: d.role === r }); }));
     var fuse = el('input', { type: 'checkbox', id: 'uUse' }); fuse.checked = d.use !== false;
+    var del = isNew || d.use !== false || (S.sess && d.id === S.sess.user.id) ? null
+      : el('button', { class: 'btn', type: 'button', text: 'この利用者を消す', style: 'align-self:flex-start;color:var(--red,#c0392b)' });
+    if (del) del.onclick = function () {
+      if (!confirm(d.name + ' さん（' + d.id + '）を消します。パスワードも消え、元に戻せません（報告・写真の記録に残った名前はそのままです）。消しますか？')) return;
+      del.disabled = true;
+      call({ action: 'userDelete', id: d.id }).then(function (r) {
+        if (!r.ok) { del.disabled = false; msg.className = 'msg err'; msg.textContent = USER_ERR[r.error] || errText(r); return; }
+        settingsView();
+        setTimeout(function () { toastMsg(d.name + ' さんを消しました。'); }, 50);
+      }).catch(function (e) { del.disabled = false; fail(e); });
+    };
     var reset = isNew ? null : el('button', { class: 'btn', type: 'button', text: 'パスワードを作り直してもらう（新しいコードを出す）', style: 'align-self:flex-start' });
     if (reset) reset.onclick = function () {
       if (!confirm(d.name + ' さんに新しい「はじめのコード」を出します。本人が新しいパスワードを決めるまでは、今のパスワードも使えます。出しますか？')) return;
@@ -489,8 +501,9 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
         fid, fname, fdept, el('label', { for: 'uRole', text: '役割（できること）' }), frole,
         el('label', { style: 'display:flex;gap:8px;align-items:center;color:var(--ink)' }, fuse, '使う（外すと、すぐにログインできなくなります）'),
         isNew ? el('div', { class: 'meta', text: 'パスワードはここでは決めません。発行すると「はじめのコード」が出るので、本人がそれを使って自分で決めます。' })
-          : el('div', { class: 'meta', text: '状態：' + (pwState(d).replace(/^・/, '') || 'パスワード設定済み') }),
+          : el('div', { class: 'meta', text: '状態：' + (pwState(d).replace(/^・/, '') || 'パスワード設定済み') + (d.use === false ? '・止めている（消せます）' : '') }),
         reset,
+        del,
         mine ? el('div', { class: 'meta', text: '自分の役割を外す・止める時は、ほかに管理部の人が要ります。' }) : null,
         msg, save));
     document.querySelectorAll('#tabs button').forEach(function (b) { b.setAttribute('aria-selected', 'false'); });
