@@ -365,11 +365,90 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
       el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', text: 'お知らせを見る', onclick: function () { newsView('feature'); } })));
     var back = el('button', { class: 'btn small', type: 'button', text: '← 戻る', style: 'align-self:flex-start', onclick: function () { start(); } });
     var head = el('h2', { text: '設定', style: 'font-size:18px;margin:0' });
-    if (u.role !== '管理部') return show(back, head, view, about);
-    show(back, head, view, el('div', { class: 'empty', text: '管理部の設定を読み込んでいます…' }), about);
-    var draw = function () { show(back, head, view, el('div', { class: 'cards2' }, spotsCard(), notifyCard()), about); };
+    var mine = myPwCard();
+    if (u.role !== '管理部') return show(back, head, view, mine, about);
+    show(back, head, view, el('div', { class: 'empty', text: '管理部の設定を読み込んでいます…' }), mine, about);
+    var draw = function () { show(back, head, view, usersCard(), el('div', { class: 'cards2' }, spotsCard(), notifyCard()), mine, about); };
     if (S.spots.length) draw();
     else call({ action: 'itemsAdmin' }).then(function (r) { if (my !== S.seq) return; if (r.ok) { S.spots = r.spots; S.adminItems = r.items; } draw(); }).catch(fail);
+  }
+
+  /* ---------- 設定：利用者（アカウント）の発行・変更（管理部だけ） ---------- */
+  var USER_ERR = { id: 'ID は英数字と . _ - で3〜30文字にしてください。', id_taken: 'その ID はもう使われています。', pw_short: 'パスワードは8文字以上にしてください。',
+    last_admin: '管理部が誰もいなくなるので、この変更はできません（ほかに管理部の人を先に足してください）。', unknown: 'その利用者が見つかりません。読み直してください。' };
+  function usersCard() {
+    var box = el('div', { class: 'card setsec' }, el('h3', { text: '利用者（アカウント）' }),
+      el('div', { class: 'meta', text: '写真係・管理部の ID の発行と、役割・所属の変更、止める（使わない）ができます。パスワードは本人に直接伝えてください（メールやチャットに残さない）。' }));
+    var list = el('div', { class: 'list' }, el('div', { class: 'empty', text: '読み込んでいます…' }));
+    var add = el('button', { class: 'btn primary', type: 'button', text: '＋ 利用者を足す', style: 'align-self:flex-start', onclick: function () { userForm(null); } });
+    box.append(add, list);
+    call({ action: 'usersList' }).then(function (r) {
+      if (!r.ok) return list.replaceChildren(el('div', { class: 'msg err', text: errText(r) }));
+      S.users = r.users; S.roles = r.roles;
+      list.replaceChildren.apply(list, r.users.map(function (x) {
+        return el('button', { class: 'item', type: 'button', style: x.use ? null : 'opacity:.55', onclick: function () { userForm(x); } },
+          el('span', { class: 'nm' }, x.name, el('div', { class: 'meta', style: 'font-weight:400', text: x.id + (x.dept ? '・' + x.dept : '') + (x.hasPw ? '' : '・パスワード未設定') })),
+          el('span', { class: 'tag ' + (x.role === '管理部' ? 'doing' : 'has'), text: x.role }), !x.use && el('span', { class: 'tag none', text: '止めている' }));
+      }));
+    }).catch(function (e) { fail(e); });
+    return box;
+  }
+  function userForm(x) {
+    var isNew = !x, d = x || { id: '', name: '', role: '写真係', dept: '', use: true };
+    function f(id, label, val, ph, type) { var i = el('input', { type: type || 'text', id: id, value: val || '', placeholder: ph || '', autocomplete: 'off' }); return [el('label', { for: id, text: label }), i]; }
+    var fid = f('uId', 'ID（ログインに使う。英数字）', d.id, '例：tanaka'); if (!isNew) fid[1].disabled = true;
+    var fname = f('uName', '名前', d.name, '例：田中');
+    var fdept = f('uDept', '所属（表示だけ）', d.dept, '例：管理部');
+    var frole = el('select', { id: 'uRole' }, (S.roles || ['管理部', '写真係']).map(function (r) { return el('option', { value: r, text: r + (r === '管理部' ? '（連絡の対応・備品・設定まで全部）' : '（写真の登録だけ）'), selected: d.role === r }); }));
+    var fuse = el('input', { type: 'checkbox', id: 'uUse' }); fuse.checked = d.use !== false;
+    var fpw = f('uPw', isNew ? 'はじめのパスワード（8文字以上）' : 'パスワードを変える時だけ入れる（8文字以上）', '', '', 'password'); fpw[1].autocomplete = 'new-password';
+    var msg = el('div');
+    var save = el('button', { class: 'btn primary wide', type: 'button', text: isNew ? 'この ID を発行する' : '保存する' });
+    save.onclick = function () {
+      msg.className = ''; msg.textContent = '';
+      save.disabled = true;
+      call({ action: 'userSave', user: { isNew: isNew, id: fid[1].value.trim(), name: fname[1].value, dept: fdept[1].value, role: frole.value, use: fuse.checked }, pw: fpw[1].value }).then(function (r) {
+        fpw[1].value = '';
+        if (!r.ok) { save.disabled = false; msg.className = 'msg err'; msg.textContent = USER_ERR[r.error] || errText(r); return; }
+        settingsView();
+        setTimeout(function () { toastMsg(isNew ? 'ID を発行しました。パスワードは本人に直接伝えてください。' : '保存しました。'); }, 50);
+      }).catch(function (e) { save.disabled = false; fail(e); });
+    };
+    var mine = S.sess && d.id === S.sess.user.id;
+    show(el('button', { class: 'btn small', type: 'button', text: '← 設定へ', style: 'align-self:flex-start', onclick: function () { settingsView(); } }),
+      el('div', { class: 'card setsec' },
+        el('h2', { text: isNew ? '利用者を足す（ID の発行）' : d.name + ' さんを直す', style: 'font-size:18px;margin:0' }),
+        fid, fname, fdept, el('label', { for: 'uRole', text: '役割（できること）' }), frole,
+        el('label', { style: 'display:flex;gap:8px;align-items:center;color:var(--ink)' }, fuse, '使う（外すと、すぐにログインできなくなります）'),
+        fpw,
+        mine ? el('div', { class: 'meta', text: '自分の役割を外す・止める時は、ほかに管理部の人が要ります。' }) : null,
+        msg, save));
+    document.querySelectorAll('#tabs button').forEach(function (b) { b.setAttribute('aria-selected', 'false'); });
+  }
+  function toastMsg(text) {
+    var t = el('div', { class: 'msg ok', text: text, style: 'position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:40;box-shadow:0 4px 14px rgba(0,0,0,.15)' });
+    document.body.append(t); setTimeout(function () { t.remove(); }, 3500);
+  }
+
+  /* ---------- 設定：自分のパスワードを変える（誰でも） ---------- */
+  function myPwCard() {
+    var cur = el('input', { type: 'password', autocomplete: 'current-password', 'aria-label': '今のパスワード', placeholder: '今のパスワード' });
+    var n1 = el('input', { type: 'password', autocomplete: 'new-password', 'aria-label': '新しいパスワード', placeholder: '新しいパスワード（8文字以上）' });
+    var n2 = el('input', { type: 'password', autocomplete: 'new-password', 'aria-label': '新しいパスワード（もう一度）', placeholder: '新しいパスワード（もう一度）' });
+    var msg = el('div');
+    var go = el('button', { class: 'btn', type: 'button', text: 'パスワードを変える', style: 'align-self:flex-start' });
+    go.onclick = function () {
+      msg.className = 'msg err';
+      if (n1.value.length < 8) { msg.textContent = '新しいパスワードは8文字以上にしてください。'; return; }
+      if (n1.value !== n2.value) { msg.textContent = '新しいパスワードが2回とも同じか確かめてください。'; return; }
+      go.disabled = true;
+      call({ action: 'myPw', cur: cur.value, pw: n1.value }).then(function (r) {
+        go.disabled = false; cur.value = n1.value = n2.value = '';
+        if (!r.ok) { msg.textContent = r.error === 'pw_wrong' ? '今のパスワードが違います。' : USER_ERR[r.error] || errText(r); return; }
+        msg.className = 'msg ok'; msg.textContent = 'パスワードを変えました。';
+      }).catch(function (e) { go.disabled = false; fail(e); });
+    };
+    return el('div', { class: 'card setsec' }, el('h3', { text: '自分のパスワードを変える' }), cur, n1, n2, msg, go);
   }
 
   /* ---------- 管理部：連絡（在庫切れとほしい！を1つに。見守りの「疑問・気づき一覧」と同じ絞り込み） ---------- */
