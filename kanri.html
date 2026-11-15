@@ -240,12 +240,17 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
       S.adminItems = r.items; S.spots = r.spots;
       var add = el('button', { class: 'btn primary', type: 'button', text: '＋ 備品を足す', onclick: function () { itemForm(null); } });
       var qr = el('button', { class: 'btn', type: 'button', text: 'QRの札を印刷する', onclick: function () { printQr(null); } });
+      // 一覧・ほしい！のページは鍵が要るので、管理部にだけ鍵入りのアドレスを渡して開く
+      var open = el('button', { class: 'btn', type: 'button', text: '一覧・ほしい！を開く', onclick: function () {
+        open.disabled = true;
+        call({ action: 'qrUrls', codes: ['-'] }).then(function (x) { open.disabled = false; if (x.ok) location.href = x.listUrl; else alert(errText(x)); }).catch(function (e) { open.disabled = false; fail(e); });
+      } });
       var list = el('div', { class: 'list' }, r.items.map(function (it) {
         return el('button', { class: 'item', type: 'button', style: it.use ? null : 'opacity:.55', onclick: function () { itemForm(it); } },
           pic(catArt(it), 'th'), el('span', { class: 'nm', text: it.name }),
           el('span', { class: 'meta', text: (it.spot || '—') + '・' + it.code }), !it.use && el('span', { class: 'tag none', text: '使わない' }));
       }));
-      show(flash, el('div', { class: 'row' }, add, qr), list, spotsCard(), notifyCard());
+      show(flash, el('div', { class: 'row' }, add, qr, open), list, spotsCard(), notifyCard());
     }).catch(fail);
   }
 
