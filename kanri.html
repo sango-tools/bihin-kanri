@@ -103,7 +103,12 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
   }
   var ERR = { login: 'ID かパスワードが違います。', locked: '続けて間違えたため、15分止めています。時間をおいて試してください。', role: 'この役割ではできない操作です。',
     too_large: '写真が大き過ぎます。', photo: '写真を読めませんでした。別の写真で試してください。', unknown: '見つかりませんでした。一覧を読み直してください。', busy: '混み合っています。もう一度押してください。' };
-  function errText(r) { return (r && ERR[r.error]) || 'うまくいきませんでした。電波の良い所でもう一度試してください。'; }
+  function errText(r) {
+    if (r && ERR[r.error]) return ERR[r.error];
+    // 原因を追えるよう、短い言葉だけ添える（中身は GAS の「エラー記録」シートに残る）
+    var code = r && r.error ? r.error : 'net';   // net＝返事が届かなかった・読めなかった
+    return 'うまくいきませんでした。電波の良い所でもう一度試してください。（' + code + '）';
+  }
 
   /* ---------- ログイン ---------- */
   function loginView(note) {
