@@ -3,7 +3,7 @@
    - 絵・アイコンは「端末の控えを先に使う」。名前を変えない限り中身は変わらないので速い
    - GAS（script.google.com）への問い合わせ・データは、ここでは扱わない（いつも取りに行く）
    - 控える物を変えたら CACHE_VERSION を上げる（version.js の版とは別に数える） */
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;   // 3：溜まった version.js?t=… の控えを捨てるため上げた
 const CACHE = 'bihin-shell-v' + CACHE_VERSION;
 const SHELL = [
   './', 'index.html', 'list.html', 'kanri.html', 'config.js', 'version.js', 'verbar.js', 'theme.css', 'manifest.webmanifest',
@@ -38,10 +38,12 @@ self.addEventListener('fetch', (event) => {
 
   const isPage = req.mode === 'navigate' || /\.(html|js|css|webmanifest)$/.test(url.pathname) || url.pathname.endsWith('/');
   if (isPage) {
+    // 控えは「?」の後ろを外した名前で1つだけ持つ（version.js?t=… を毎回別の物として溜めないように）
+    const key = url.origin + url.pathname;
     event.respondWith(
       fetch(req)
         .then((res) => {
-          if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
+          if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(key, copy)); }
           return res;
         })
         .catch(() => caches.match(req, { ignoreSearch: true }).then((r) => r || caches.match('index.html')))
@@ -50,7 +52,7 @@ self.addEventListener('fetch', (event) => {
   }
   event.respondWith(
     caches.match(req, { ignoreSearch: true }).then((hit) => hit || fetch(req).then((res) => {
-      if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
+      if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(url.origin + url.pathname, copy)); }
       return res;
     }))
   );

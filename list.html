@@ -181,7 +181,7 @@ label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
       S.items = r.items; S.spots = r.spots;
       var a = document.activeElement;
       if (c && a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;   // 入力中は描き直さない
-      fn();
+      render();   // 最初に開いた画面ではなく、今開いているタブを描き直す（届くまでにタブを替えても合うように）
     }).catch(function () { if (!c) trouble(null); });
   }
 

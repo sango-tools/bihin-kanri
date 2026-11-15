@@ -169,7 +169,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   var API = window.BIHIN_API || '';
   var KEY = 'bihin.session';
   var app = document.getElementById('app');
-  var S = { sess: null, tab: null, items: [], q: '', adminItems: null, spots: [], tasks: [] };
+  var S = { sess: null, tab: null, items: [], q: '', adminItems: null, spots: [], tasks: [], seq: 0 };
 
   function el(tag, attrs) {
     var e = document.createElement(tag);
@@ -321,7 +321,11 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     if (!S.meChecked) {
       S.meChecked = true;
       call({ action: 'me' }).then(function (r) {
-        if (r && r.ok && r.user) { S.sess.user = { id: r.user.id, name: r.user.name, role: r.user.role, dept: r.user.dept || '' }; saveSess(S.sess); drawWho(S.sess.user); }
+        if (r && r.ok && r.user) {
+          var changedRole = r.user.role !== S.sess.user.role;
+          S.sess.user = { id: r.user.id, name: r.user.name, role: r.user.role, dept: r.user.dept || '' }; saveSess(S.sess); drawWho(S.sess.user);
+          if (changedRole) start();   // 利用者シートで役割が変わっていたら、タブを出し直す
+        }
       }).catch(function () {});
     }
     drawNewsDot();
@@ -343,6 +347,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   function settingsView() {
     var u = S.sess && S.sess.user;
     if (!u) return;
+    var my = ++S.seq;   // 画面の番号。返事が遅れて届いた時に、移った後の画面を上書きしないため（どの画面も同じ）
     // 設定を開いている間は、上のタブのどれも選ばれていない見た目にする（どのタブの中でもないため）
     document.querySelectorAll('#tabs button').forEach(function (b) { b.setAttribute('aria-selected', 'false'); });
     function choice(label, key, opts) {
@@ -364,7 +369,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     show(back, head, view, el('div', { class: 'empty', text: '管理部の設定を読み込んでいます…' }), about);
     var draw = function () { show(back, head, view, el('div', { class: 'cards2' }, spotsCard(), notifyCard()), about); };
     if (S.spots.length) draw();
-    else call({ action: 'itemsAdmin' }).then(function (r) { if (r.ok) { S.spots = r.spots; S.adminItems = r.items; } draw(); }).catch(fail);
+    else call({ action: 'itemsAdmin' }).then(function (r) { if (my !== S.seq) return; if (r.ok) { S.spots = r.spots; S.adminItems = r.items; } draw(); }).catch(fail);
   }
 
   /* ---------- 管理部：連絡（在庫切れとほしい！を1つに。見守りの「疑問・気づき一覧」と同じ絞り込み） ---------- */
@@ -380,7 +385,9 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   function tasksView(flash) {
     var c = cGet('tasks');
     if (c) { S.tasks = c; drawTasks(flash, true); } else show(el('div', { class: 'empty', text: '連絡を読み込んでいます…' }));
+    var my = ++S.seq;
     call({ action: 'tasks' }).then(function (r) {
+      if (my !== S.seq) return;
       if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
       cSet('tasks', r.tasks); S.tasks = r.tasks;
       if (S.tab !== 'tasks') return;
@@ -477,7 +484,9 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   function spotsView() {
     var c = cGet('spots');
     if (c) drawSpots(c, true); else show(el('div', { class: 'empty', text: '置き場所の状況を読み込んでいます…' }));
+    var my = ++S.seq;
     call({ action: 'spotStatus' }).then(function (r) {
+      if (my !== S.seq) { if (r && r.ok) cSet('spots', { spots: r.spots, map: r.map }); return; }
       if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
       cSet('spots', { spots: r.spots, map: r.map });
       if (S.tab === 'spots' && !document.getElementById('spotDetail')) drawSpots(r, false);
@@ -591,7 +600,9 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   /* ---------- 管理部：備品・置き場所・通知先・QR ---------- */
   function itemsView(flash) {
     show(el('div', { class: 'empty', text: '備品を読み込んでいます…' }));
+    var my = ++S.seq;
     call({ action: 'itemsAdmin' }).then(function (r) {
+      if (my !== S.seq) return;
       if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
       S.adminItems = r.items; S.spots = r.spots;
       var add = el('button', { class: 'btn primary', type: 'button', text: '＋ 備品を足す', onclick: function () { itemForm(null); } });
@@ -634,7 +645,10 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     save.onclick = function () {
       if (!n[1].value.trim()) { msg.className = 'msg err'; msg.textContent = '名前を入れてください。'; return; }
       save.disabled = true;
-      call({ action: 'itemSave', item: { code: it ? it.code : '', name: n[1].value, spec: s[1].value, category: c[1].value, spot: sp.value, placeNote: nt[1].value, use: use.checked } }).then(function (r) {
+      var body = { code: it ? it.code : '', name: n[1].value, spec: s[1].value, category: c[1].value, placeNote: nt[1].value, use: use.checked };
+      // 置き場所は、選び直した時（と新しく足す時）だけ送る。A〜F 以外の書き方の備品を保存しても、置き場所が消えないように
+      if (!it || sp.value !== (d.spot || '')) body.spot = sp.value;
+      call({ action: 'itemSave', item: body }).then(function (r) {
         if (!r.ok) { save.disabled = false; msg.className = 'msg err'; msg.textContent = errText(r); return; }
         itemsView(el('div', { class: 'msg ok', text: (it ? '保存しました' : r.code + ' として足しました。QRの札を印刷して貼ってください') + '。' }));
       }).catch(function (e) { save.disabled = false; fail(e); });
@@ -750,7 +764,9 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   /* ---------- 写真係：写真 ---------- */
   function photosView() {
     show(el('div', { class: 'empty', text: '備品を読み込んでいます…' }));
+    var my = ++S.seq;
     call({ action: 'items' }).then(function (r) {
+      if (my !== S.seq) return;
       if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
       S.items = r.items; drawList();
     }).catch(function (e) { if (!e || !e.handled) show(el('div', { class: 'msg err', text: errText(null) })); });
