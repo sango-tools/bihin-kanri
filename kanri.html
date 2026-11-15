@@ -59,6 +59,28 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
 .chip{appearance:none;border:1px solid var(--line);background:var(--sheet);color:var(--ink);font:inherit;font-size:13px;border-radius:999px;padding:4px 10px;cursor:pointer;white-space:nowrap}
 .chip.on{background:var(--blue-soft);color:var(--blue);border-color:var(--blue)}
 .chip .cn{font-size:11px;margin-left:5px;color:var(--muted)}
+.plan{background:var(--sheet);border:1px solid var(--line);border-radius:14px;padding:6px;overflow:hidden}
+.plan svg{width:100%;height:auto;display:block}
+.plan .wall{fill:none;stroke:var(--muted);stroke-width:3}
+.plan .fx,.plan .desk{fill:var(--paper);stroke:var(--line);stroke-width:1.5}
+.plan .seat{fill:none;stroke:var(--line)}
+.plan .solid{fill:var(--line)}
+.plan .step{stroke:var(--line);stroke-width:1.5}
+.plan .door{fill:var(--blue)}
+.plan .lbl{font-size:16px;fill:var(--muted)} .plan .lbl.big{font-size:22px;font-weight:700}
+.plan .hit{fill:transparent;cursor:pointer}
+.plan .pin{stroke:#fff;stroke-width:4}
+.plan .pt{fill:#fff;font-size:30px;font-weight:700}
+.plan .zone{opacity:.4}
+.plan .mk.out .pin,.plan .mk.out .zone{fill:var(--stamp)}
+.plan .mk.soon .pin,.plan .mk.soon .zone{fill:#d08a1e}
+.plan .mk.ok .pin,.plan .mk.ok .zone{fill:#8d99a8}
+.plan .cnt{fill:#fff;stroke:var(--stamp);stroke-width:4}
+.plan .ct{fill:var(--stamp);font-size:22px;font-weight:700}
+@media (max-width:560px){ .plan .lbl{display:none} .plan .lbl.big{display:block;font-size:28px}
+  .plan .pin{r:40} .plan .pt{font-size:40px;transform:translateY(4px);transform-box:fill-box} .plan .cnt{r:24} .plan .ct{font-size:28px} }
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px}
+.dot.out{background:var(--stamp)} .dot.soon{background:#d08a1e} .dot.ok{background:#8d99a8}
 select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--sheet);color:var(--ink)}
 .rep h2{font-size:17px;margin:4px 0 2px}
 .rep .ops{display:flex;gap:8px;margin-top:10px}
@@ -297,7 +319,8 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     call({ action: 'spotStatus' }).then(function (r) {
       if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
       var xs = r.spots.slice().sort(function (a, b) { return b.out - a.out || b.soon - a.soon || a.id.localeCompare(b.id); });
-      show(el('div', { class: 'meta', text: '在庫切れの多い順です。置き場所を押すと、そこの備品と補充の履歴が出ます。' }),
+      show(r.map ? spotMap(r.map, r.spots) : null,
+        el('div', { class: 'meta', text: '在庫切れの多い順です。図面の印か、下の置き場所を押すと、そこの備品と補充の履歴が出ます。' }),
         el('div', { class: 'list' }, xs.map(function (s) {
           return el('button', { class: 'item', type: 'button', onclick: function () { spotDetail(s); } },
             el('b', { text: s.id, style: 'width:22px;font-size:18px;color:var(--stamp)' }),
@@ -306,6 +329,38 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
         })));
     }).catch(fail);
   }
+  /* 図面（配置図）に、置き場所ごとの在庫切れの数を印で出す。赤＝在庫切れあり、橙＝そろそろ、灰＝問題なし */
+  function spotMap(m, status) {
+    var NS = 'http://www.w3.org/2000/svg';
+    var box = el('div', { class: 'plan' });
+    box.innerHTML = '<svg viewBox="' + m.viewBox + '" role="img" aria-label="事務所の配置図と置き場所ごとの在庫の状況">' + m.svg + '</svg>';
+    var svg = box.firstChild;
+    m.spots.forEach(function (g) {
+      var st = status.find(function (x) { return x.id === g.id; }) || { out: 0, soon: 0, items: [] };
+      var cls = st.out ? 'out' : st.soon ? 'soon' : 'ok';
+      var z = g.zone, p = g.pin;
+      var node = document.createElementNS(NS, 'g');
+      node.setAttribute('class', 'mk ' + cls);
+      node.setAttribute('role', 'button'); node.setAttribute('tabindex', '0');
+      node.setAttribute('aria-label', '置き場所 ' + g.id + ' ' + g.name + (st.out ? ' 在庫切れ ' + st.out : ''));
+      var x0 = Math.min(z[0], p[0] - 40) - 6, y0 = Math.min(z[1], p[1] - 40) - 6;
+      var x1 = Math.max(z[0] + z[2], p[0] + 40) + 6, y1 = Math.max(z[1] + z[3], p[1] + 40) + 6;
+      node.innerHTML = '<rect class="hit" x="' + x0 + '" y="' + y0 + '" width="' + (x1 - x0) + '" height="' + (y1 - y0) + '"/>' +
+        '<rect class="zone" x="' + z[0] + '" y="' + z[1] + '" width="' + z[2] + '" height="' + z[3] + '"/>' +
+        '<circle class="pin" cx="' + p[0] + '" cy="' + p[1] + '" r="30"/>' +
+        '<text class="pt" x="' + p[0] + '" y="' + (p[1] + 10) + '" text-anchor="middle">' + g.id + '</text>' +
+        (st.out ? '<circle class="cnt" cx="' + (p[0] + 26) + '" cy="' + (p[1] - 26) + '" r="18"/><text class="ct" x="' + (p[0] + 26) + '" y="' + (p[1] - 19) + '" text-anchor="middle">' + st.out + '</text>' : '');
+      var go = function () { spotDetail(st); };
+      node.addEventListener('click', go);
+      node.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+      svg.appendChild(node);
+    });
+    return el('div', {}, box, el('div', { class: 'row', style: 'gap:12px;margin-top:4px' },
+      el('span', { class: 'meta' }, el('span', { class: 'dot out' }), '在庫切れあり（数字は品目数）'),
+      el('span', { class: 'meta' }, el('span', { class: 'dot soon' }), 'そろそろ'),
+      el('span', { class: 'meta' }, el('span', { class: 'dot ok' }), '問題なし')));
+  }
+
   function spotDetail(s) {
     var items = s.items.slice().sort(function (a, b) { return (b.out - a.out) || (b.soon - a.soon) || a.name.localeCompare(b.name, 'ja'); });
     show(el('button', { class: 'btn small', type: 'button', text: '← 置き場所の一覧へ', style: 'align-self:flex-start', onclick: spotsView }),
