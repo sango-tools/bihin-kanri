@@ -129,13 +129,20 @@ label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
     if (/紙|付箋|用紙/.test(s)) return 'img/cat-paper.webp';
     return 'img/cat-other.webp';
   }
+  // 返事が来ない時は20秒で区切る（電波が悪くて暗転やぐるぐるが消えないままにならないように）
+  function timed(url, opt) {
+    var ctl = 'AbortController' in window ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 20000);
+    if (ctl) opt.signal = ctl.signal;
+    return fetch(url, opt).then(function (r) { return r.json(); }).finally(function () { clearTimeout(timer); });
+  }
   function get(params) {
     params.k = key;
-    return fetch(API + (API.indexOf('?') >= 0 ? '&' : '?') + new URLSearchParams(params).toString(), { redirect: 'follow' }).then(function (r) { return r.json(); });
+    return timed(API + (API.indexOf('?') >= 0 ? '&' : '?') + new URLSearchParams(params).toString(), { redirect: 'follow' });
   }
   function post(body) {
     body.k = key;
-    return fetch(API, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) }).then(function (r) { return r.json(); });
+    return timed(API, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) });
   }
   function trouble(r) {
     var bad = r && r.error === 'key';
@@ -186,13 +193,13 @@ label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
     refreshed = true;
     get({ action: 'list' }).then(function (r) {
       if (r && r.error === 'key') { cClear(); S.items = null; return trouble(r); }   // 鍵を作り直した時は、控えを消して知らせる
-      if (!r || !r.ok) { if (!c) trouble(r); return; }
+      if (!r || !r.ok) { refreshed = false; if (!c) trouble(r); return; }   // 失敗したら、次にタブを開いた時にもう一度聞く
       cSet('list', { items: r.items, spots: r.spots });
       S.items = r.items; S.spots = r.spots;
       var a = document.activeElement;
       if (c && a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;   // 入力中は描き直さない
       render();   // 最初に開いた画面ではなく、今開いているタブを描き直す（届くまでにタブを替えても合うように）
-    }).catch(function () { if (!c) trouble(null); });
+    }).catch(function () { refreshed = false; if (!c) trouble(null); });
   }
 
   /* ---------- 写真（見えた物から順に読む） ---------- */
@@ -274,11 +281,11 @@ label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
       if (S.mapLoading) return;
       S.mapLoading = true;
       get({ action: 'map' }).then(function (r) {
-        if (r && r.error === 'key') { cClear(); S.map = null; return trouble(r); }
-        if (!r || !r.ok) { if (!c) trouble(r); return; }
+        if (r && r.error === 'key') { cClear(); S.map = null; S.mapLoading = false; return trouble(r); }
+        if (!r || !r.ok) { S.mapLoading = false; if (!c) trouble(r); return; }
         cSet('map', { svg: r.svg, viewBox: r.viewBox, spots: r.spots });
         S.map = r; if (S.tab === 'map') drawMap();
-      }).catch(function () { if (!c) trouble(null); });
+      }).catch(function () { S.mapLoading = false; if (!c) trouble(null); });
     });
   }
   function drawMap() {

@@ -300,6 +300,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   }
 
   function logout(expired) {
+    ++S.seq;   // 読み込み中だった画面の返事が、ログアウトの後に控えを書き戻したり、ログイン画面を消したりしないように
     if (S.sess && !expired) call({ action: 'logout' }).catch(function () {});
     S.sess = null; S.tab = null; S.meChecked = false; clearSess();
     try { Object.keys(localStorage).filter(function (k) { return k.indexOf('bihin.c.') === 0; }).forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
@@ -452,6 +453,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   }
   /* 発行したコードを1回だけ大きく見せる（閉じると二度と出ない。GAS にもハッシュしか残らない） */
   function codeView(name, id, code, exp, again) {
+    S.inSettings = false;   // Esc で閉じない（コードを伝える前に消えないように）
     show(el('div', { class: 'card setsec' },
       el('h2', { text: again ? name + ' さんの新しいはじめのコード' : name + ' さんの ID を発行しました', style: 'font-size:18px;margin:0' }),
       el('div', { class: 'meta', text: '次の2つを本人に直接（口頭か手渡しのメモで）伝えてください。メールやチャットには残さないでください。' }),
@@ -480,6 +482,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     return box;
   }
   function userForm(x) {
+    S.inSettings = false;   // 入力中に Esc で消えないように
     var isNew = !x, d = x || { id: '', name: '', role: '写真係', dept: '', use: true };
     function f(id, label, val, ph, type) { var i = el('input', { type: type || 'text', id: id, value: val || '', placeholder: ph || '', autocomplete: 'off' }); return [el('label', { for: id, text: label }), i]; }
     var fid = f('uId', 'ID（ログインに使う。英数字）', d.id, '例：tanaka'); if (!isNew) fid[1].disabled = true;
@@ -572,9 +575,10 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   function cSet(k, v) { try { localStorage.setItem('bihin.c.' + k, JSON.stringify(v)); } catch (e) {} }
   function typing() { var a = document.activeElement; return a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && app.contains(a); }
   function staleNote() { return el('div', { class: 'meta', id: 'stale', text: '前回の内容を出しています。新しくしています…' }); }
-  function tasksView(flash) {
-    var c = cGet('tasks');
-    if (c) { S.tasks = c; drawTasks(flash, true); } else show(el('div', { class: 'empty', text: '連絡を読み込んでいます…' }));
+  function tasksView(flash, fresh) {
+    // fresh：状態を変えた直後。古い控え（変える前の状態で押せるボタン付き）は出さず、新しい内容を待つ
+    var c = fresh ? null : cGet('tasks');
+    if (c) { S.tasks = c; drawTasks(flash, true); } else show(flash || null, el('div', { class: 'empty', text: '連絡を読み込んでいます…' }));
     var my = ++S.seq;
     call({ action: 'tasks' }).then(function (r) {
       if (my !== S.seq) return;
@@ -646,13 +650,13 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
             undo.disabled = true;
             call({ action: body.action, id: t.id, state: t.state }).then(function (x) {
               if (!x.ok) { undo.disabled = false; return alert(errText(x)); }
-              tasksView(el('div', { class: 'msg ok', text: (t.title || '') + ' を「' + t.state + '」に戻しました。' }));
+              tasksView(el('div', { class: 'msg ok', text: (t.title || '') + ' を「' + t.state + '」に戻しました。' }), true);
             }).catch(function (e) { undo.disabled = false; fail(e); });
           };
           note.append(undo);
           setTimeout(function () { if (undo.isConnected && !undo.disabled) undo.remove(); }, 8000);
         }
-        tasksView(note);
+        tasksView(note, true);
       }).catch(function (e) { btn.disabled = false; fail(e); });
     }
     function b(label, cls2, body) { var x = el('button', { class: 'btn small' + (cls2 ? ' ' + cls2 : ''), type: 'button', text: label }); x.onclick = function () { act(body, label.replace('にする', '').replace('に戻す', ''), x); }; return x; }
@@ -691,7 +695,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     if (c) drawSpots(c, true); else show(el('div', { class: 'empty', text: '置き場所の状況を読み込んでいます…' }));
     var my = ++S.seq;
     call({ action: 'spotStatus' }).then(function (r) {
-      if (my !== S.seq) { if (r && r.ok) cSet('spots', { spots: r.spots, map: r.map }); return; }
+      if (my !== S.seq) { if (r && r.ok && S.sess) cSet('spots', { spots: r.spots, map: r.map }); return; }
       if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
       cSet('spots', { spots: r.spots, map: r.map });
       if (S.tab === 'spots' && !document.getElementById('spotDetail')) drawSpots(r, false);
@@ -882,7 +886,10 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
         (r.live ? ' 正式運用中：この宛先に届きます。' : ' いまはテスト運用です（メールは持ち主にだけ届きます。正式への切り替えは持ち主がスプレッドシートで行います）。');
       msg.textContent = 'その時刻に、まだ済んでいない連絡をまとめて送ります（新着と、まだ手つかずの物を上に。対応中は件数だけ）。済んでいない物が無ければ送りません。';
     }
-    call({ action: 'notifyGet' }).then(function (r) { if (!r.ok) { msg.textContent = errText(r); return; } fillState(r); }).catch(function () {});
+    // 今の設定を読み込むまで保存は押せない（空のまま保存すると、送り先が消えて仕掛けも外れるため）
+    b.disabled = true;
+    call({ action: 'notifyGet' }).then(function (r) { if (!r.ok) { msg.textContent = errText(r) + '（読み直してから保存してください）'; return; } fillState(r); b.disabled = false; })
+      .catch(function () { msg.textContent = '今の設定を読み込めませんでした。読み直してから保存してください。'; });
     drawPick();
     b.onclick = function () {
       b.disabled = true;
@@ -903,9 +910,12 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
      （新しい画面を開く形は、スマホやホーム画面のアプリで止められることがあるため） */
   function printQr(codes) {
     show(el('div', { class: 'empty', text: 'QRの札を作っています…' }));
+    var my = ++S.seq;
     call({ action: 'qrUrls', codes: codes || [] }).then(function (r) {
+      if (my !== S.seq) return;
       if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
       return loadQrLib().then(function () {
+        if (my !== S.seq) return;
         var tags = (codes ? [] : [{ code: '', name: 'ほしい！・備品の一覧', spec: '無い物を頼む・どこに何があるか', url: r.listUrl, hint: '棚の近くに1枚貼ってください' }])
           .concat(r.items.map(function (x) { x.hint = 'なくなったら読んでください'; return x; }));
         var grid = el('div', { class: 'qrgrid' }, tags.map(function (t) {
@@ -939,7 +949,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
       if (my !== S.seq) return;
       if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
       S.items = r.items; drawList();
-    }).catch(function (e) { if (!e || !e.handled) show(el('div', { class: 'msg err', text: errText(null) })); });
+    }).catch(fail);   // fail は、もう別の画面に移っていたら何もしない
   }
 
   function drawList() {
