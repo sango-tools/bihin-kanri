@@ -149,6 +149,8 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
     var more = el('a', 'meta', '備品の一覧・ほかに欲しい物を伝える');
     more.href = 'list.html#k=' + encodeURIComponent(key) + '&tab=list';
     more.style.textAlign = 'center';
+    // 一覧のページに「報告の画面に戻る」を出すための目印（このタブの中だけ。ホーム画面のアプリには戻るボタンが無いため）
+    more.onclick = function () { try { sessionStorage.setItem('bihin.back', JSON.stringify({ url: location.href, label: '報告の画面に戻る' })); } catch (e) {} };
     // 押してすぐ送らず、確かめる画面を挟む（2026-11-15 木村さん）。写真と名前はそのまま見えるようにする
     var area = el('div', 'actarea');
     area.append(btn, more);

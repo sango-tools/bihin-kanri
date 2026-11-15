@@ -502,7 +502,13 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
       // 一覧・ほしい！のページは鍵が要るので、管理部にだけ鍵入りのアドレスを渡して開く
       var open = el('button', { class: 'btn', type: 'button', text: '一覧・ほしい！を開く', onclick: function () {
         open.disabled = true;
-        call({ action: 'qrUrls', codes: ['-'] }).then(function (x) { open.disabled = false; if (x.ok) location.href = x.listUrl; else alert(errText(x)); }).catch(function (e) { open.disabled = false; fail(e); });
+        call({ action: 'qrUrls', codes: ['-'] }).then(function (x) {
+          open.disabled = false;
+          if (!x.ok) return alert(errText(x));
+          // 一覧のページに「管理用に戻る」を出すための目印（このタブの中だけに残る。外には送られない）
+          try { sessionStorage.setItem('bihin.back', JSON.stringify({ url: location.href, label: '管理用に戻る' })); } catch (e) {}
+          location.href = x.listUrl;
+        }).catch(function (e) { open.disabled = false; fail(e); });
       } });
       var list = el('div', { class: 'list' }, r.items.map(function (it) {
         return el('button', { class: 'item', type: 'button', style: it.use ? null : 'opacity:.55', onclick: function () { itemForm(it); } },

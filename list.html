@@ -141,6 +141,16 @@ label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
   /* ---------- 骨組み ---------- */
   /* タブは「一覧」「マップ」の2つ。ほしい！はタブにせず、ページの下の小さな入口から開く（2026-11-15 木村さん） */
   var TABS = [['list', '一覧'], ['map', 'マップ']];
+  /* 管理用・報告の画面から来た時は、題の横に「← 戻る」を出す（ホーム画面のアプリやスマホでは、ブラウザの戻るが見えないことがあるため） */
+  (function () {
+    var b = null;
+    try { b = JSON.parse(sessionStorage.getItem('bihin.back') || 'null'); } catch (e) {}
+    if (!b || !b.url) return;
+    var top = document.querySelector('.top');
+    var btn = el('button', { class: 'btn', type: 'button', text: '← ' + (b.label || '戻る'), style: 'margin-left:auto;padding:6px 10px;font-size:13px' });
+    btn.onclick = function () { try { sessionStorage.removeItem('bihin.back'); } catch (e) {} location.href = b.url; };
+    top.append(btn);
+  })();
   function go(tab) { S.tab = tab; if (tab !== 'want') { try { localStorage.setItem('bihin.list.tab', tab); } catch (e) {} } render(); window.scrollTo(0, 0); }
   function render() {
     var nav = document.getElementById('tabs');
