@@ -303,13 +303,27 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   function closeNews() { var p = document.getElementById('newsPop'); if (p) p.remove(); newsUnread = null; }
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeNews(); });
 
+  /* 名前の横は所属（例：工事部）。所属が空なら役割。役割（できること）は下に小さく */
+  function whoText(u) { return u.name + '（' + (u.dept || u.role) + '）'; }
+  function drawWho(u) {
+    var w = document.getElementById('who');
+    w.replaceChildren(document.createTextNode(whoText(u)), el('div', { class: 'meta', style: 'font-weight:400', text: '役割：' + u.role }));
+  }
+
   /* ---------- 骨組み ---------- */
   function start() {
     var u = S.sess.user;
     var tabs = u.role === '管理部' ? [['tasks', '連絡'], ['spots', '置き場所'], ['items', '備品'], ['photos', '写真']] : [['photos', '写真']];
     if (!S.tab || !tabs.some(function (t) { return t[0] === S.tab; })) S.tab = tabs[0][0];
     document.getElementById('hd').hidden = false;
-    document.getElementById('who').textContent = u.name + '（' + u.role + '）';
+    drawWho(u);
+    // 利用者シートで所属などを直した時に、ログインし直さなくても表示が変わるよう、裏で今の値を聞く（画面は描き直さない）
+    if (!S.meChecked) {
+      S.meChecked = true;
+      call({ action: 'me' }).then(function (r) {
+        if (r && r.ok && r.user) { S.sess.user = { id: r.user.id, name: r.user.name, role: r.user.role, dept: r.user.dept || '' }; saveSess(S.sess); drawWho(S.sess.user); }
+      }).catch(function () {});
+    }
     drawNewsDot();
     var nav = document.getElementById('tabs');
     nav.replaceChildren.apply(nav, tabs.map(function (t) {
@@ -342,7 +356,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
       choice('文字の大きさ', 'size', [['normal', '標準'], ['large', '大きめ']]),
       choice('PC での並べ方', 'wide', [['on', '横幅を使う'], ['off', 'スマホと同じ']]));
     var about = el('div', { class: 'card setsec' }, el('h3', { text: 'この画面について' }),
-      el('div', { class: 'meta', text: '画面 v' + (window.BIHIN_VERSION || '?') + '・ログイン中：' + u.name + '（' + u.role + '）' }),
+      el('div', { class: 'meta', text: '画面 v' + (window.BIHIN_VERSION || '?') + '・ログイン中：' + whoText(u) + '・役割：' + u.role }),
       el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', text: 'お知らせを見る', onclick: function () { newsView('feature'); } })));
     var back = el('button', { class: 'btn small', type: 'button', text: '← 戻る', style: 'align-self:flex-start', onclick: function () { start(); } });
     var head = el('h2', { text: '設定', style: 'font-size:18px;margin:0' });
