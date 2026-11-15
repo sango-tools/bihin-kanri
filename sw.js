@@ -12,6 +12,7 @@ const SHELL = [
   'img/empty-reports.webp', 'img/photo-guide.webp',
   'img/cat-pen.webp', 'img/cat-paper.webp', 'img/cat-file.webp', 'img/cat-binding.webp',
   'img/cat-pack.webp', 'img/cat-battery.webp', 'img/cat-envelope.webp', 'img/cat-other.webp',
+  'vendor/qrcode.min.js',
 ];
 
 self.addEventListener('install', (event) => {
