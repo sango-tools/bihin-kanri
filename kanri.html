@@ -221,7 +221,8 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
     if (it.hasPhoto) call({ action: 'photo', i: it.code }).then(function (r) {
       if (r.ok && r.photo) ph.replaceChildren(el('img', { src: r.photo, alt: '' }));
     }).catch(function () {});
-    var file = el('input', { type: 'file', accept: 'image/*', capture: 'environment', hidden: true });
+    // capture を付けるとカメラしか開かない端末があるので付けない（カメラ・写真・ファイルを選ぶ画面が出る）
+    var file = el('input', { type: 'file', accept: 'image/*', hidden: true });
     var preview = null, msg = el('div');
     var pick = el('button', { class: 'btn wide', type: 'button', text: it.hasPhoto ? 'カメラで撮り直す・写真を選ぶ' : 'カメラで撮る・写真を選ぶ', onclick: function () { file.click(); } });
     var save = el('button', { class: 'btn primary wide', type: 'button', text: 'この写真で登録する', hidden: true });
