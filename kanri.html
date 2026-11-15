@@ -57,7 +57,17 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
 .ph img{width:100%;height:100%;object-fit:contain}
 .ph span{color:var(--muted);font-size:14px}
 .empty{text-align:center;color:var(--muted);padding:30px 0}
+.scene{width:100%;max-width:300px;height:auto;display:block;margin:0 auto}
+.head-art{width:calc(100% + 28px);margin:-14px -14px 4px;height:110px;object-fit:cover;object-position:right center;border-radius:14px 14px 0 0;display:block}
+.item .th{width:44px;height:44px;flex:none;border-radius:8px;background:var(--paper);object-fit:contain;padding:4px}
+.ph.art img{object-fit:contain;padding:10%;opacity:.85}
+.guide{display:flex;gap:10px;align-items:center;font-size:13px;color:var(--muted);background:var(--paper);border-radius:10px;padding:8px}
+.guide img{width:110px;height:auto;flex:none;border-radius:8px}
+@media (prefers-color-scheme:dark){ .scene,.head-art,.ph.art img,.guide img,.item .th{opacity:.85} }
 </style>
+<link rel="icon" href="icon-32.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
 </head>
 <body>
 <header id="hd" hidden>
@@ -86,6 +96,19 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
     return e;
   }
   function show() { app.replaceChildren.apply(app, Array.prototype.filter.call(arguments, Boolean)); }
+  function pic(src, cls) { return el('img', { src: src, alt: '', class: cls || null, decoding: 'async' }); }
+  /* 写真が無い備品の絵（index.html と同じ決め方） */
+  function catArt(it) {
+    var s = (it.category || '') + ' ' + (it.name || '');
+    if (/封筒/.test(s)) return 'img/cat-envelope.webp';
+    if (/電池/.test(s)) return 'img/cat-battery.webp';
+    if (/筆記|ペン|マーカー|鉛筆|修正/.test(s)) return 'img/cat-pen.webp';
+    if (/ファイル/.test(s)) return 'img/cat-file.webp';
+    if (/とじ|ホッチキス|クリップ/.test(s)) return 'img/cat-binding.webp';
+    if (/梱包|テープ/.test(s)) return 'img/cat-pack.webp';
+    if (/紙|付箋|用紙/.test(s)) return 'img/cat-paper.webp';
+    return 'img/cat-other.webp';
+  }
   function fmt(iso) { var d = new Date(iso); if (isNaN(d)) return ''; return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
 
   function loadSess() { try { var s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s && s.exp > Date.now()) return s; } catch (e) {} return null; }
@@ -118,6 +141,8 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
     var msg = el('div');
     var go = el('button', { class: 'btn primary wide', type: 'submit', text: 'ログイン' });
     var form = el('form', { class: 'card' },
+      pic('img/head-kanri.webp', 'head-art'),
+      pic('img/login.webp', 'scene'),
       el('h1', { text: '備品ボード 管理', style: 'font-size:20px;margin:0 0 4px' }),
       el('div', { class: 'meta', text: '写真係・管理部の人だけが使うページです。ID とパスワードは管理している人から受け取ってください。' }),
       el('label', { for: 'uid', text: 'ID' }), id,
@@ -165,7 +190,7 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
       if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
       var head = el('div', { class: 'row' }, el('div', { class: 'meta', style: 'flex:1', text: '未対応・対応中 ' + r.reports.length + '件（補充済みは出しません）' }),
         el('button', { class: 'btn small', type: 'button', text: '読み直す', onclick: function () { reportsView(); } }));
-      if (!r.reports.length) return show(flash, head, el('div', { class: 'empty', text: 'いま出ている報告はありません。' }));
+      if (!r.reports.length) return show(flash, head, pic('img/empty-reports.webp', 'scene'), el('div', { class: 'empty', text: 'いま出ている報告はありません。', style: 'padding-top:4px' }));
       show.apply(null, [flash, head].concat(r.reports.map(repCard)));
     }).catch(function (e) { if (!e || !e.handled) show(el('div', { class: 'msg err', text: errText(null) })); });
   }
@@ -207,6 +232,7 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
       var none = S.items.filter(function (it) { return !it.hasPhoto; }).length;
       list.replaceChildren.apply(list, [el('div', { class: 'meta', text: '写真が無い備品：' + none + '件' })].concat(xs.map(function (it) {
         return el('button', { class: 'item', type: 'button', onclick: function () { photoView(it); } },
+          pic(catArt(it), 'th'),
           el('span', { class: 'nm', text: it.name }), el('span', { class: 'meta', text: it.code }),
           el('span', { class: 'tag ' + (it.hasPhoto ? 'has' : 'none'), text: it.hasPhoto ? '写真あり' : '写真なし' }));
       })));
@@ -217,7 +243,8 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
   }
 
   function photoView(it, flash) {
-    var ph = el('div', { class: 'ph' }, el('span', { text: it.hasPhoto ? '写真を読み込んでいます…' : 'まだ写真がありません' }));
+    var ph = it.hasPhoto ? el('div', { class: 'ph' }, el('span', { text: '写真を読み込んでいます…' }))
+      : el('div', { class: 'ph art' }, pic(catArt(it)));
     if (it.hasPhoto) call({ action: 'photo', i: it.code }).then(function (r) {
       if (r.ok && r.photo) ph.replaceChildren(el('img', { src: r.photo, alt: '' }));
     }).catch(function () {});
@@ -249,7 +276,11 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
         el('div', { class: 'row' }, el('span', { class: 'meta', text: it.code }), el('span', { class: 'tag ' + (it.hasPhoto ? 'has' : 'none'), text: it.hasPhoto ? '写真あり' : '写真なし' })),
         el('h2', { text: it.name, style: 'font-size:19px;margin:4px 0' }),
         el('div', { class: 'meta', text: [it.spec, it.place && '置き場所：' + it.place].filter(Boolean).join('　') }),
-        el('div', { style: 'height:10px' }), ph, el('div', { style: 'height:10px' }), msg, el('div', { style: 'height:8px' }), pick, el('div', { style: 'height:8px' }), save, file));
+        el('div', { style: 'height:10px' }), ph,
+        !it.hasPhoto && el('div', { class: 'meta', style: 'text-align:center;margin-top:4px', text: 'まだ写真がありません（絵は分類の目安）' }),
+        el('div', { style: 'height:10px' }),
+        el('div', { class: 'guide' }, pic('img/photo-guide.webp'), el('span', { text: '備品だけを正面から撮ってください。人・書類・画面は写さない。' })),
+        el('div', { style: 'height:8px' }), msg, el('div', { style: 'height:8px' }), pick, el('div', { style: 'height:8px' }), save, file));
   }
 
   /** 写真を長い辺 max px の JPEG にする（送る量を減らし、位置情報などの付帯情報も落ちる） */

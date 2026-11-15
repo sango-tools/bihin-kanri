@@ -39,7 +39,18 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
 .done h1{margin:0}
 .loading{flex:1;display:grid;place-items:center;color:var(--muted)}
 .retry{appearance:none;border:1px solid var(--line);background:var(--sheet);color:var(--ink);font:inherit;border-radius:12px;padding:12px;width:100%}
+.ph.art img{object-fit:contain;padding:8%;opacity:.9}
+.ph .cap{position:absolute;bottom:8px;left:0;right:0;font-size:12px;color:var(--muted);font-weight:400}
+.ph{position:relative}
+.scene{width:100%;max-width:320px;height:auto;margin:0 auto;display:block}
+.done .scene{max-width:300px}
+.mark.small{width:56px;height:56px;font-size:32px;margin-top:-28px;border:4px solid var(--paper)}
+.note.warn{display:flex;gap:10px;align-items:center;text-align:left}
+.note.warn img{width:72px;height:auto;flex:none;border-radius:8px}
+@media (prefers-color-scheme:dark){ .scene,.ph.art img,.note.warn img{opacity:.85} }
 </style>
+<link rel="icon" href="icon-32.png">
+<link rel="apple-touch-icon" href="icon-180.png">
 </head>
 <body>
 <main id="app"><div class="loading">読み込んでいます…</div></main>
@@ -57,6 +68,19 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
   var sentKey = 'bihin.sent.' + code;
 
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function img(src, cls) { var i = el('img', cls); i.src = src; i.alt = ''; i.decoding = 'async'; return i; }
+  /* 写真が無い備品は、分類（無ければ名前）から絵を選ぶ。絵は img/ にある（公開してよい物だけ） */
+  function catArt(item) {
+    var s = (item.category || '') + ' ' + (item.name || '');
+    if (/封筒/.test(s)) return 'img/cat-envelope.webp';
+    if (/電池/.test(s)) return 'img/cat-battery.webp';
+    if (/筆記|ペン|マーカー|鉛筆|修正/.test(s)) return 'img/cat-pen.webp';
+    if (/ファイル/.test(s)) return 'img/cat-file.webp';
+    if (/とじ|ホッチキス|クリップ/.test(s)) return 'img/cat-binding.webp';
+    if (/梱包|テープ/.test(s)) return 'img/cat-pack.webp';
+    if (/紙|付箋|用紙/.test(s)) return 'img/cat-paper.webp';
+    return 'img/cat-other.webp';
+  }
   function show() { app.replaceChildren.apply(app, arguments); }
   function fmt(iso) { var d = new Date(iso); if (isNaN(d)) return ''; return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   function recentlySent() { try { var t = Number(localStorage.getItem(sentKey) || 0); return t && Date.now() - t < COOLDOWN_MS; } catch (e) { return false; } }
@@ -75,7 +99,7 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
     var msg = kind === 'key' || kind === 'unknown'
       ? 'このQRコードは使えなくなっています。お手数ですが、管理部に口頭で伝えてください。'
       : 'うまく送れませんでした。もう一度試すか、管理部に口頭で伝えてください。';
-    var nodes = [el('div', 'spacer'), el('div', 'note err', msg)];
+    var nodes = [el('div', 'spacer'), img('img/trouble.webp', 'scene'), el('div', 'note err', msg)];
     if (retry) { var b = el('button', 'retry', 'もう一度試す'); b.onclick = retry; nodes.push(b); }
     nodes.push(el('div', 'spacer'));
     show.apply(null, nodes);
@@ -85,15 +109,15 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
     var n = open && open.count > 1 ? '（これで ' + open.count + ' 人目の報告です）' : '';
     show(el('div', 'done', null));
     var box = app.firstChild;
-    box.append(el('div', 'mark', '✓'), el('h1', null, again ? 'さっき報告を送りました' : '管理部に届きました'),
+    box.append(img('img/sent.webp', 'scene'), el('div', 'mark small', '✓'), el('h1', null, again ? 'さっき報告を送りました' : '管理部に届きました'),
       el('div', 'meta', 'ありがとうございます。この画面は閉じて大丈夫です。' + n));
   }
 
   function card(item) {
     var c = el('div', 'card');
     var ph = el('div', 'ph');
-    if (item.photo) { var img = el('img'); img.alt = ''; img.src = item.photo; ph.append(img); }
-    else ph.append(el('span', null, (item.name || '?').slice(0, 1)));
+    if (item.photo) ph.append(img(item.photo));
+    else { ph.className = 'ph art'; ph.append(img(catArt(item)), el('div', 'cap', '写真はまだありません（絵は分類の目安）')); }
     c.append(ph, el('h1', null, item.name));
     var m = [item.spec, item.place && '置き場所：' + item.place].filter(Boolean).join('　');
     if (m) c.append(el('div', 'meta', m));
@@ -105,7 +129,9 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
     var nodes = [card(item)];
     var btn;
     if (open) {
-      nodes.push(el('div', 'note warn', 'もう報告が出ています（' + fmt(open.since) + ' から・' + open.count + '人）。管理部が対応します。'));
+      var w = el('div', 'note warn');
+      w.append(img('img/already.webp'), el('span', null, 'もう報告が出ています（' + fmt(open.since) + ' から・' + open.count + '人）。管理部が対応します。'));
+      nodes.push(w);
       btn = el('button', 'go sub', 'わたしも無かった');
     } else {
       btn = el('button', 'go', 'なくなりました');
@@ -134,7 +160,7 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
   }
 
   if (!code || !key) {
-    show(el('div', 'spacer'), el('div', 'note warn', '備品に貼ってあるQRコードを、スマホのカメラで読んで開いてください。'), el('div', 'spacer'));
+    show(el('div', 'spacer'), img('img/scan.webp', 'scene'), el('div', 'meta', '備品に貼ってあるQRコードを、スマホのカメラで読んで開いてください。'), el('div', 'spacer'));
   } else if (!API || API.indexOf('REPLACE_WITH') >= 0) {
     fail('config', null);
   } else {
