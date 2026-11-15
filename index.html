@@ -71,6 +71,9 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
   var q = new URLSearchParams(location.hash.slice(1) || location.search);
   var code = (q.get('i') || '').trim().toUpperCase();
   var key = q.get('k') || '';
+  var direct = q.get('go') === '1';   // 一覧の「なくなりました」から来た時は、確かめる画面から始める
+  // 同じタブのまま別の QR を開くと # の後ろだけ変わり、ページが読み直されない。前の備品で送らないよう読み直す
+  window.addEventListener('hashchange', function () { location.reload(); });
   var app = document.getElementById('app');
   var COOLDOWN_MS = 3 * 60 * 1000;
   var sentKey = 'bihin.sent.' + code;
@@ -119,6 +122,10 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
     var box = app.firstChild;
     box.append(img('img/sent.webp', 'scene'), el('div', 'mark small', '✓'), el('h1', null, again ? 'さっき報告を送りました' : '管理部に届きました'),
       el('div', 'meta', 'ありがとうございます。この画面は閉じて大丈夫です。' + n));
+    var more = el('a', 'meta', 'ほかにも無い物がある時は → 備品の一覧');
+    more.href = 'list.html#k=' + encodeURIComponent(key) + '&tab=list';
+    more.style.textAlign = 'center';
+    box.append(more);
   }
 
   function card(item, out) {
@@ -161,6 +168,7 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
     nodes.push(el('div', 'spacer'), right);
     show.apply(null, nodes);
     app.classList.add('reportpc');
+    if (direct) { direct = false; confirmSend(area, item, !!open, btn, more); }
   }
 
   function confirmSend(area, item, again, btn, more) {

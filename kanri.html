@@ -205,12 +205,15 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     var ctl = 'AbortController' in window ? new AbortController() : null;
     var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 30000);
     if (S.sess) body.t = S.sess.token;
+    var at = S.seq;   // 失敗した時に、もう別の画面に移っていたら、その画面を消さない（fail を見る）
     return fetch(API, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), signal: ctl ? ctl.signal : undefined })
       .then(function (r) { return r.json(); })
       .then(function (r) { if (r && r.error === 'auth') { logout(true); throw { handled: true }; } return r; })
+      .catch(function (e) { if (e && typeof e === 'object' && !e.handled) { try { e.seq = at; } catch (x) {} } throw e; })
       .finally(function () { clearTimeout(timer); });
   }
   var ERR = { login: 'ID かパスワードが違います。', locked: '続けて間違えたため、15分止めています。時間をおいて試してください。', role: 'この役割ではできない操作です。',
+    name: '名前を入れてください。', in_use: '使っている人は消せません。', self: '自分は消せません。',
     too_large: '写真が大き過ぎます。', input: '入力を確かめてください。', config: '報告ページのURLがスプレッドシートに設定されていません。', photo: '写真を読めませんでした。別の写真で試してください。', unknown: '見つかりませんでした。一覧を読み直してください。', busy: '混み合っています。もう一度押してください。' };
   function errText(r) {
     if (r && ERR[r.error]) return ERR[r.error];
@@ -242,6 +245,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
       call({ action: 'login', id: id.value.trim(), pw: pw.value }).then(function (r) {
         if (!r.ok) { msg.className = 'msg err'; msg.textContent = errText(r); go.disabled = false; go.textContent = 'ログイン'; return; }
         S.sess = { token: r.token, user: r.user, exp: Date.now() + (r.expiresIn - 60) * 1000 };
+        S.tab = null; S.meChecked = false;   // 前に使っていた人のタブではなく、この人の役割の最初のタブで開く
         saveSess(S.sess); pw.value = ''; start();
       }).catch(function () { msg.className = 'msg err'; msg.textContent = errText(null); go.disabled = false; go.textContent = 'ログイン'; });
     };
@@ -282,6 +286,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
         if (!r.ok) return again(USER_ERR[r.error] || errText(r));
         n1.value = n2.value = code.value = '';
         S.sess = { token: r.token, user: r.user, exp: Date.now() + (r.expiresIn - 60) * 1000 };
+        S.tab = null; S.meChecked = false;
         saveSess(S.sess); start();
         setTimeout(function () { toastMsg('パスワードを決めました。次からは ID とこのパスワードでログインします。'); }, 300);
       }).catch(function () { again(errText(null)); });
@@ -292,7 +297,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
 
   function logout(expired) {
     if (S.sess && !expired) call({ action: 'logout' }).catch(function () {});
-    S.sess = null; clearSess();
+    S.sess = null; S.tab = null; S.meChecked = false; clearSess();
     try { Object.keys(localStorage).filter(function (k) { return k.indexOf('bihin.c.') === 0; }).forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
     loginView(expired ? 'ログインの期限が切れました。もう一度ログインしてください。' : null);
   }
@@ -307,14 +312,21 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   document.getElementById('gear').onclick = function () { settingsView(); };
 
   /* ---------- お知らせ（現場ナビと同じ。version.js の BIHIN_NEWS。読んでいない分があればボタンに印） ---------- */
-  var NEWS = window.BIHIN_NEWS || [];
+  // 写真係には、写真係にも関係する物（to: 'all'）だけを出す。管理部には全部
+  function newsList() { var all = window.BIHIN_NEWS || []; var admin = S.sess && S.sess.user.role === '管理部'; return all.filter(function (n) { return admin || n.to === 'all'; }); }
   function newsKey(n) { return n.date + '|' + n.text.slice(0, 20); }
   function unreadNews() {
     var seen = {};
     try { (JSON.parse(localStorage.getItem('bihin.news.seen') || '[]')).forEach(function (k) { seen[k] = 1; }); } catch (e) {}
-    return NEWS.filter(function (n) { return !seen[newsKey(n)]; });
+    return newsList().filter(function (n) { return !seen[newsKey(n)]; });
   }
-  function markNewsRead() { try { localStorage.setItem('bihin.news.seen', JSON.stringify(NEWS.map(newsKey))); } catch (e) {} }
+  function markNewsRead() {
+    try {
+      var seen = JSON.parse(localStorage.getItem('bihin.news.seen') || '[]');
+      newsList().forEach(function (n) { var k = newsKey(n); if (seen.indexOf(k) < 0) seen.push(k); });
+      localStorage.setItem('bihin.news.seen', JSON.stringify(seen));
+    } catch (e) {}
+  }
   function drawNewsDot() { document.getElementById('newsDot').hidden = !unreadNews().length; }
   document.getElementById('news').onclick = function () { newsView('feature'); };
   /* お知らせは画面を移らず、上に重ねて出す（2026-11-15 木村さん）。外を押すか × か Esc で閉じる */
@@ -327,7 +339,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
       return el('button', { class: 'chip' + (type === t[0] ? ' on' : ''), type: 'button', onclick: function () { newsView(t[0]); } }, t[1], cnt(t[0]) ? el('span', { class: 'cn', text: '新 ' + cnt(t[0]) }) : null);
     }));
     var isNew = {}; unread.forEach(function (n) { isNew[newsKey(n)] = 1; });
-    var xs = NEWS.filter(function (n) { return n.type === type; });
+    var xs = newsList().filter(function (n) { return n.type === type; });
     var close = el('button', { class: 'ibtn', type: 'button', 'aria-label': '閉じる', text: '×', style: 'font-size:20px', onclick: closeNews });
     var panel = el('div', { class: 'popPanel', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'お知らせ' },
       el('div', { class: 'row', style: 'flex-wrap:nowrap' }, el('h2', { text: 'お知らせ', style: 'font-size:18px;margin:0;flex:1' }),
@@ -433,7 +445,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
       el('div', { class: 'meta', text: 'ID' }), el('div', { text: id, style: 'font:700 22px var(--f-mono);letter-spacing:.04em' }),
       el('div', { class: 'meta', text: 'はじめのコード' }), el('div', { text: code.slice(0, 3) + ' ' + code.slice(3), style: 'font:700 40px var(--f-mono);letter-spacing:.12em' }),
       el('div', { class: 'msg', text: md(exp) + ' まで（7日間）、1回だけ使えます。本人がログインの画面の「はじめてのログイン」で ID とこのコードを入れ、自分のパスワードを決めます。' + (again ? '今のパスワードは、本人が新しいパスワードを決めるまで使えます。' : '') }),
-      el('div', { class: 'msg err', text: 'この画面を閉じると、コードは二度と出ません（分からなくなったら、もう一度出し直せます）。' }),
+      el('div', { class: 'msg err', text: 'この画面を閉じると、このコードはもう見られません。分からなくなったら、新しいコードを出せます。' }),
       el('button', { class: 'btn primary wide', type: 'button', text: '伝えたので閉じる', onclick: function () { settingsView(); } })));
     document.querySelectorAll('#tabs button').forEach(function (b) { b.setAttribute('aria-selected', 'false'); });
   }
@@ -463,7 +475,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     var frole = el('select', { id: 'uRole' }, (S.roles || ['管理部', '写真係']).map(function (r) { return el('option', { value: r, text: r + (r === '管理部' ? '（連絡の対応・備品・設定まで全部）' : '（写真の登録だけ）'), selected: d.role === r }); }));
     var fuse = el('input', { type: 'checkbox', id: 'uUse' }); fuse.checked = d.use !== false;
     var del = isNew || d.use !== false || (S.sess && d.id === S.sess.user.id) ? null
-      : el('button', { class: 'btn', type: 'button', text: 'この利用者を消す', style: 'align-self:flex-start;color:var(--red,#c0392b)' });
+      : el('button', { class: 'btn', type: 'button', text: 'この利用者を消す', style: 'align-self:flex-start;margin-top:28px;color:#c0392b;border-color:#e3a5a0' });
     if (del) del.onclick = function () {
       if (!confirm(d.name + ' さん（' + d.id + '）を消します。パスワードも消え、元に戻せません（報告・写真の記録に残った名前はそのままです）。消しますか？')) return;
       del.disabled = true;
@@ -486,6 +498,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     var save = el('button', { class: 'btn primary wide', type: 'button', text: isNew ? 'この ID を発行する' : '保存する' });
     save.onclick = function () {
       msg.className = ''; msg.textContent = '';
+      if (!isNew && d.use !== false && !fuse.checked && !confirm(d.name + ' さんを止めます。すぐにログインできなくなります。よいですか？')) return;
       save.disabled = true;
       call({ action: 'userSave', user: { isNew: isNew, id: fid[1].value.trim(), name: fname[1].value, dept: fdept[1].value, role: frole.value, use: fuse.checked } }).then(function (r) {
         if (!r.ok) { save.disabled = false; msg.className = 'msg err'; msg.textContent = USER_ERR[r.error] || errText(r); return; }
@@ -528,7 +541,9 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
       call({ action: 'myPw', cur: cur.value, pw: n1.value }).then(function (r) {
         go.disabled = false; cur.value = n1.value = n2.value = '';
         if (!r.ok) { msg.textContent = r.error === 'pw_wrong' ? '今のパスワードが違います。' : USER_ERR[r.error] || errText(r); return; }
-        msg.className = 'msg ok'; msg.textContent = 'パスワードを変えました。';
+        // 変えると前の通行証は使えなくなる（ほかの端末はログインし直し）。この端末は新しい通行証に替える
+        if (r.token) { S.sess = { token: r.token, user: r.user, exp: Date.now() + (r.expiresIn - 60) * 1000 }; saveSess(S.sess); }
+        msg.className = 'msg ok'; msg.textContent = 'パスワードを変えました。ほかの端末では、ログインし直しになります。';
       }).catch(function (e) { go.disabled = false; fail(e); });
     };
     return el('div', { class: 'card setsec' }, el('h3', { text: '自分のパスワードを変える' }), cur, n1, n2, msg, go);
@@ -606,17 +621,32 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     var isOut = t.kind === 'out';
     var cls = t.done ? 'has' : t.state === '対応中' ? 'doing' : 'open';
     var ops = el('div', { class: 'row', style: 'margin-top:8px' });
-    function act(body, label, btn) {
+    // 状態を変えたら、上に「元に戻す」を数秒出す（押し間違えても戻せるように。確かめる画面より手間が少ない）
+    function act(body, label, btn, text) {
       btn.disabled = true;
       call(body).then(function (r) {
         if (!r.ok) { btn.disabled = false; return alert(errText(r)); }
-        tasksView(el('div', { class: 'msg ok', text: (t.title || '') + ' を「' + label + '」にしました。' }));
+        var note = el('div', { class: 'msg ok row', style: 'gap:8px' }, el('span', { style: 'flex:1', text: text || (t.title || '') + ' を「' + label + '」にしました。' }));
+        if (body.state && body.state !== t.state) {
+          var undo = el('button', { class: 'btn small', type: 'button', text: '元に戻す' });
+          undo.onclick = function () {
+            undo.disabled = true;
+            call({ action: body.action, id: t.id, state: t.state }).then(function (x) {
+              if (!x.ok) { undo.disabled = false; return alert(errText(x)); }
+              tasksView(el('div', { class: 'msg ok', text: (t.title || '') + ' を「' + t.state + '」に戻しました。' }));
+            }).catch(function (e) { undo.disabled = false; fail(e); });
+          };
+          note.append(undo);
+          setTimeout(function () { if (undo.isConnected && !undo.disabled) undo.remove(); }, 8000);
+        }
+        tasksView(note);
       }).catch(function (e) { btn.disabled = false; fail(e); });
     }
     function b(label, cls2, body) { var x = el('button', { class: 'btn small' + (cls2 ? ' ' + cls2 : ''), type: 'button', text: label }); x.onclick = function () { act(body, label.replace('にする', '').replace('に戻す', ''), x); }; return x; }
     if (isOut) {
       if (!t.done && t.state !== '対応中') ops.append(b('対応中にする', '', { action: 'setState', id: t.id, state: '対応中' }));
       if (!t.done) ops.append(b('補充済みにする', 'done', { action: 'setState', id: t.id, state: '補充済み' }));
+      else ops.append(b('未対応に戻す', '', { action: 'setState', id: t.id, state: '未対応' }));
     } else {
       if (!t.done && t.state !== '対応中') ops.append(b('対応中にする', '', { action: 'setWantState', id: t.id, state: '対応中' }));
       if (!t.done) ops.append(b('完了にする', 'done', { action: 'setWantState', id: t.id, state: '完了' }));
@@ -625,7 +655,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
       rb.onclick = function () {
         var inp = el('input', { type: 'text', maxlength: '300', placeholder: '返信（例：明日届きます）', 'aria-label': '返信' });
         var send = el('button', { class: 'btn small primary', type: 'button', text: '送る' });
-        send.onclick = function () { if (inp.value.trim()) act({ action: 'reply', id: t.id, text: inp.value }, '返信済み', send); };
+        send.onclick = function () { if (inp.value.trim()) act({ action: 'reply', id: t.id, text: inp.value }, '', send, '返信を送りました。頼んだ人は「ほしい！」のページで見られます。'); };
         rb.replaceWith(el('div', { class: 'row', style: 'flex-wrap:nowrap;width:100%' }, inp, send));
         inp.focus();
       };
@@ -669,7 +699,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
             el('span', { class: 'spk ' + (n ? 'todo' : s.soon ? 'warn' : '') }, s.id, n ? el('span', { class: 'smN', text: String(n) }) : null),
             el('span', { class: 'nm' }, s.name, el('div', { class: 'meta', style: 'font-weight:400', text: s.lastRefill ? '前回の補充 ' + fmt(s.lastRefill).split(' ')[0] + '・' + s.lastRefillItem : 'まだ補充の記録がありません' })),
             n ? el('span', { class: 'meta', style: 'text-align:right', text: [s.out && '在庫切れ ' + s.out, s.req && 'ほしい！ ' + s.req].filter(Boolean).join('・') })
-              : s.soon ? el('span', { class: 'tag doing', text: 'そろそろ ' + s.soon }) : el('span', { class: 'meta', text: s.items.length + '品目' }));
+              : s.soon ? el('span', { class: 'tag doing', text: 'そろそろ ' + s.soon }) : el('span', { class: 'meta', text: s.items.length + '品' }));
         })))));
     }
   }
@@ -698,7 +728,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     });
     return el('div', {}, wrap, el('div', { class: 'row', style: 'gap:12px;margin-top:4px' },
       el('span', { class: 'meta' }, el('span', { class: 'dot out' }), '依頼あり（数字は在庫切れ＋ほしい！の件数）'),
-      el('span', { class: 'meta' }, el('span', { class: 'dot soon' }), 'そろそろ'),
+      el('span', { class: 'meta' }, el('span', { class: 'dot soon' }), 'そろそろ（いつもの間隔なら、もうすぐ切れる）'),
       el('span', { class: 'meta' }, el('span', { class: 'dot ok' }), '問題なし')));
   }
 
@@ -717,46 +747,10 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
       })) : el('div', { class: 'empty', text: 'この置き場所の備品は、まだ登録されていません。' }));
   }
 
-  function fail(e) { if (!e || !e.handled) show(el('div', { class: 'msg err', text: errText(null) })); }
-
-  /* ---------- 管理部：ほしい！ ---------- */
-  var WSTATE = { '未対応': 'open', '対応中': 'doing', '完了': 'has' };
-  function wantsView(flash) {
-    show(el('div', { class: 'empty', text: 'リクエストを読み込んでいます…' }));
-    call({ action: 'wantsAdmin' }).then(function (r) {
-      if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
-      var head = el('div', { class: 'row' }, el('div', { class: 'meta', style: 'flex:1', text: 'ほしい！ ' + r.wants.length + '件（完了は60日まで出します）' }),
-        el('button', { class: 'btn small', type: 'button', text: '読み直す', onclick: function () { wantsView(); } }));
-      if (!r.wants.length) return show(flash, head, pic('img/empty-reports.webp', 'scene'), el('div', { class: 'empty', text: 'いま出ているリクエストはありません。' }));
-      show.apply(null, [flash, head].concat(r.wants.map(wantCard)));
-    }).catch(fail);
-  }
-  function wantCard(w) {
-    var inp = el('input', { type: 'text', maxlength: '300', placeholder: '返信（例：明日届きます）', 'aria-label': '返信' });
-    var send = el('button', { class: 'btn', type: 'button', text: '返信' });
-    send.onclick = function () {
-      if (!inp.value.trim()) return;
-      send.disabled = true;
-      call({ action: 'reply', id: w.id, text: inp.value }).then(function (r) {
-        if (!r.ok) { send.disabled = false; return alert(errText(r)); }
-        wantsView(el('div', { class: 'msg ok', text: '返信しました。リクエストした人は「ほしい！」のページで見られます。' }));
-      }).catch(function (e) { send.disabled = false; fail(e); });
-    };
-    function st(state) {
-      return el('button', { class: 'btn small', type: 'button', text: state === '未対応' ? '未対応に戻す' : state + 'にする', onclick: function (ev) {
-        ev.target.disabled = true;
-        call({ action: 'setWantState', id: w.id, state: state }).then(function (r) {
-          if (!r.ok) { ev.target.disabled = false; return alert(errText(r)); }
-          wantsView(el('div', { class: 'msg ok', text: '「' + state + '」にしました。' }));
-        }).catch(fail);
-      } });
-    }
-    var ops = el('div', { class: 'row', style: 'margin-top:8px' }, w.state !== '対応中' && w.state !== '完了' && st('対応中'), w.state !== '完了' && st('完了'), w.state === '完了' && st('未対応'));
-    return el('div', { class: 'card rep' },
-      el('div', { class: 'row' }, el('span', { class: 'tag ' + (WSTATE[w.state] || 'open'), text: w.state }), el('span', { class: 'meta', text: fmt(w.at) + (w.name ? '・' + w.name : '') + (w.itemName ? '・' + w.itemName : '') })),
-      el('h2', { text: w.text }),
-      w.replies.map(function (x) { return el('div', { class: 'meta', style: 'border-left:3px solid var(--blue);padding-left:8px;margin:4px 0', text: x.text + '　— ' + x.by + '・' + fmt(x.at) }); }),
-      el('div', { class: 'row', style: 'margin-top:8px;flex-wrap:nowrap' }, inp, send), ops);
+  function fail(e) {
+    if (e && e.handled) return;
+    if (e && e.seq != null && e.seq !== S.seq) return;   // 前の画面の問い合わせが遅れて失敗した時は、今の画面をそのままにする
+    show(el('div', { class: 'msg err', text: errText(null) }));
   }
 
   /* ---------- 管理部：備品・置き場所・通知先・QR ---------- */
@@ -785,8 +779,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
           pic(catArt(it), 'th'), el('span', { class: 'nm', text: it.name }),
           el('span', { class: 'meta', text: (it.spot || '—') + '・' + it.code }), !it.use && el('span', { class: 'tag none', text: '使わない' }));
       }));
-      show(flash, el('div', { class: 'row' }, add, qr, open), list,
-        el('div', { class: 'meta', text: '置き場所の名前・通知メールの送り先は、右上の歯車（設定）に移しました。' }));
+      show(flash, el('div', { class: 'row' }, add, qr, open), list);
     }).catch(fail);
   }
 
@@ -795,10 +788,15 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     function f(id, label, val, ph) { var i = el('input', { type: 'text', id: id, value: val || '', placeholder: ph || '' }); return [el('label', { for: id, text: label }), i]; }
     var n = f('fName', '名前（必須）', d.name, '例：ボールペン（黒）');
     var s = f('fSpec', '仕様・サイズ', d.spec, '例：0.7mm／10本入り');
-    var c = f('fCat', '分類', d.category, '例：筆記具');
-    var cats = Array.from(new Set((S.adminItems || []).map(function (x) { return x.category; }).filter(Boolean)));
-    c[1].setAttribute('list', 'catList');
-    var dl = el('datalist', { id: 'catList' }, cats.map(function (x) { return el('option', { value: x }); }));
+    // 分類は今ある物から選ぶ（「筆記具」と「筆記用具」のように増えないように）。無い時だけ「新しい分類」で書く
+    var cats = Array.from(new Set((S.adminItems || []).map(function (x) { return x.category; }).filter(Boolean))).sort(function (a, b) { return a.localeCompare(b, 'ja'); });
+    var catSel = el('select', { id: 'fCatSel' }, el('option', { value: '', text: '（選ぶ）' }), cats.map(function (x) { return el('option', { value: x, text: x, selected: d.category === x }); }), el('option', { value: '__new', text: '＋ 新しい分類を書く' }));
+    var catNew = el('input', { type: 'text', id: 'fCat', placeholder: '新しい分類（例：筆記具）', hidden: true, value: d.category && cats.indexOf(d.category) < 0 ? d.category : '' });
+    if (d.category && cats.indexOf(d.category) < 0) { catSel.value = '__new'; catNew.hidden = false; }
+    catSel.onchange = function () { catNew.hidden = catSel.value !== '__new'; if (!catNew.hidden) catNew.focus(); };
+    var c = [el('label', { for: 'fCatSel', text: '分類' }), el('div', {}, catSel, catNew)];
+    Object.defineProperty(c[1], 'value', { get: function () { return catSel.value === '__new' ? catNew.value : catSel.value; } });
+    var dl = null;
     var sp = el('select', { id: 'fSpot' }, el('option', { value: '', text: '未設定' }), S.spots.map(function (x) { return el('option', { value: x.id, text: x.id + '．' + x.name, selected: d.spot === x.id }); }));
     var nt = f('fNote', '置き場所の補足', d.placeNote, '例：2段目・左の箱');
     var use = el('input', { type: 'checkbox', id: 'fUse' }); use.checked = d.use !== false;
@@ -892,37 +890,6 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     });
   }
 
-  /* ---------- 管理部：報告 ---------- */
-  function reportsView(flash) {
-    show(el('div', { class: 'empty', text: '報告を読み込んでいます…' }));
-    call({ action: 'reports' }).then(function (r) {
-      if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
-      var head = el('div', { class: 'row' }, el('div', { class: 'meta', style: 'flex:1', text: '未対応・対応中 ' + r.reports.length + '件（補充済みは出しません）' }),
-        el('button', { class: 'btn small', type: 'button', text: '読み直す', onclick: function () { reportsView(); } }));
-      if (!r.reports.length) return show(flash, head, pic('img/empty-reports.webp', 'scene'), el('div', { class: 'empty', text: 'いま出ている報告はありません。', style: 'padding-top:4px' }));
-      show.apply(null, [flash, head].concat(r.reports.map(repCard)));
-    }).catch(function (e) { if (!e || !e.handled) show(el('div', { class: 'msg err', text: errText(null) })); });
-  }
-
-  function repCard(x) {
-    var doing = x.state === '対応中';
-    var ops = el('div', { class: 'ops' });
-    function act(state, btn) {
-      btn.disabled = true;
-      call({ action: 'setState', id: x.id, state: state }).then(function (r) {
-        if (!r.ok) { btn.disabled = false; return alert(errText(r)); }
-        reportsView(el('div', { class: 'msg ok', text: x.name + ' を「' + state + '」にしました。' }));
-      }).catch(function (e) { btn.disabled = false; if (!e || !e.handled) alert(errText(null)); });
-    }
-    if (!doing) { var b1 = el('button', { class: 'btn', type: 'button', text: '対応中にする' }); b1.onclick = function () { act('対応中', b1); }; ops.append(b1); }
-    var b2 = el('button', { class: 'btn done', type: 'button', text: '補充済みにする' }); b2.onclick = function () { act('補充済み', b2); }; ops.append(b2);
-    return el('div', { class: 'card rep' },
-      el('div', { class: 'row' }, el('span', { class: 'tag ' + (doing ? 'doing' : 'open'), text: x.state }), el('span', { class: 'meta', text: x.code })),
-      el('h2', { text: x.name }),
-      el('div', { class: 'meta', text: [x.place && '置き場所：' + x.place, fmt(x.since) + ' から・' + x.count + '人', doing && x.by ? '対応：' + x.by : ''].filter(Boolean).join('　') }),
-      ops);
-  }
-
   /* ---------- 写真係：写真 ---------- */
   function photosView() {
     show(el('div', { class: 'empty', text: '備品を読み込んでいます…' }));
@@ -940,11 +907,14 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     var count = el('div', { class: 'meta' });   // 件数は一覧の外（中に入れると PC で左上の1枠を取ってしまう）
     function fill() {
       var k = S.q.trim().toLowerCase();
-      var xs = S.items.filter(function (it) { return !k || (it.name + ' ' + it.code).toLowerCase().indexOf(k) >= 0; });
-      count.textContent = '写真が無い備品：' + S.items.filter(function (it) { return !it.hasPhoto; }).length + '件';
+      var xs = S.items.filter(function (it) { return !k || (it.name + ' ' + it.code).toLowerCase().indexOf(k) >= 0; })
+        .sort(function (a, b) { return (a.hasPhoto - b.hasPhoto) || a.code.localeCompare(b.code); });   // 写真なし（やること）を先に
+      count.textContent = '写真が無い備品：' + S.items.filter(function (it) { return !it.hasPhoto; }).length + '件（上に並べています）';
       list.replaceChildren.apply(list, xs.map(function (it) {
+        var th = pic(catArt(it), 'th');
+        if (it.hasPhoto) thumb(th, it.code);   // 写真ありは小さな写真を出す（登録できたかを一覧で確かめられるように）
         return el('button', { class: 'item', type: 'button', onclick: function () { photoView(it); } },
-          pic(catArt(it), 'th'),
+          th,
           el('span', { class: 'nm', text: it.name }), el('span', { class: 'meta', text: it.code }),
           el('span', { class: 'tag ' + (it.hasPhoto ? 'has' : 'none'), text: it.hasPhoto ? '写真あり' : '写真なし' }));
       }));
@@ -954,23 +924,44 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     show(q, count, list);
   }
 
+  /* 写真係の一覧の小さな写真。一度に聞くのは3枚まで。読んだ物は覚えておく */
+  var thumbs = {}, tq = [], tRun = 0;
+  function thumb(img, code) {
+    if (thumbs[code]) { img.src = thumbs[code]; return; }
+    tq.push([img, code]); tPump();
+  }
+  function tPump() {
+    while (tRun < 3 && tq.length) {
+      (function (x) {
+        if (thumbs[x[1]]) { x[0].src = thumbs[x[1]]; return; }
+        tRun++;
+        call({ action: 'photo', i: x[1] }).then(function (r) { if (r.ok && r.photo) { thumbs[x[1]] = r.photo; x[0].src = r.photo; } })
+          .catch(function () {}).then(function () { tRun--; tPump(); });
+      })(tq.shift());
+    }
+  }
+
   function photoView(it, flash) {
+    var picked = false;   // 写真を選んだ後に、前の写真の読み込みが遅れて届いても、見本を戻さない
     var ph = it.hasPhoto ? el('div', { class: 'ph' }, el('span', { text: '写真を読み込んでいます…' }))
       : el('div', { class: 'ph art' }, pic(catArt(it)));
     if (it.hasPhoto) call({ action: 'photo', i: it.code }).then(function (r) {
-      if (r.ok && r.photo) ph.replaceChildren(el('img', { src: r.photo, alt: '' }));
+      if (r.ok && r.photo && !picked) ph.replaceChildren(el('img', { src: r.photo, alt: '' }));
     }).catch(function () {});
     // capture を付けるとカメラしか開かない端末があるので付けない（カメラ・写真・ファイルを選ぶ画面が出る）
     var file = el('input', { type: 'file', accept: 'image/*', hidden: true });
     var preview = null, msg = el('div');
+    var noPhoto = it.hasPhoto ? null : el('div', { class: 'meta', style: 'text-align:center;margin-top:4px', text: 'まだ写真がありません（絵は分類の目安）' });
     var pick = el('button', { class: 'btn wide', type: 'button', text: it.hasPhoto ? 'カメラで撮り直す・写真を選ぶ' : 'カメラで撮る・写真を選ぶ', onclick: function () { file.click(); } });
     var save = el('button', { class: 'btn primary wide', type: 'button', text: 'この写真で登録する', hidden: true });
     file.onchange = function () {
       var f = file.files[0]; if (!f) return;
       msg.className = 'meta'; msg.textContent = '写真を整えています…';
       shrink(f, 640, 0.8).then(function (data) {
-        preview = data; ph.replaceChildren(el('img', { src: data, alt: '' }));
-        save.hidden = false; msg.textContent = '備品だけが写っているか確かめてから登録してください（人・書類・画面が写り込んだ物は使わない）。';
+        preview = data; picked = true; ph.replaceChildren(el('img', { src: data, alt: '' }));
+        if (noPhoto) noPhoto.textContent = '選んだ写真です。まだ登録していません。';
+        save.hidden = false; msg.textContent = '備品だけが写っているか確かめてから、「この写真で登録する」を押してください（人・書類・画面が写り込んだ物は使わない）。';
+        setTimeout(function () { save.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 50);   // スマホで登録のボタンが画面の外にならないように
       }).catch(function () { msg.className = 'msg err'; msg.textContent = '写真を読めませんでした。別の写真で試してください。'; });
     };
     save.onclick = function () {
@@ -978,8 +969,11 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
       save.disabled = true; save.textContent = '登録しています…';
       call({ action: 'uploadPhoto', i: it.code, data: preview }).then(function (r) {
         if (!r.ok) { save.disabled = false; save.textContent = 'この写真で登録する'; msg.className = 'msg err'; msg.textContent = errText(r); return; }
-        it.hasPhoto = true;
-        photoView(it, el('div', { class: 'msg ok', text: '登録しました。QR を読むと、この写真が出ます。' }));
+        it.hasPhoto = true; thumbs[it.code] = preview;
+        var next = S.items.filter(function (x) { return !x.hasPhoto && x.code !== it.code; }).sort(function (a, b) { return a.code.localeCompare(b.code); })[0];
+        var done = el('div', { class: 'msg ok row', style: 'gap:8px' }, el('span', { style: 'flex:1', text: '登録しました。QR を読むと、この写真が出ます。' }),
+          next ? el('button', { class: 'btn small', type: 'button', text: '次の写真なし（' + next.name + '）へ →', onclick: function () { photoView(next); } }) : null);
+        photoView(it, done);
       }).catch(function (e) { save.disabled = false; save.textContent = 'この写真で登録する'; if (!e || !e.handled) { msg.className = 'msg err'; msg.textContent = errText(null); } });
     };
     show(flash,
@@ -989,7 +983,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
         el('h2', { text: it.name, style: 'font-size:19px;margin:4px 0' }),
         el('div', { class: 'meta', text: [it.spec, it.place && '置き場所：' + it.place].filter(Boolean).join('　') }),
         el('div', { style: 'height:10px' }), ph,
-        !it.hasPhoto && el('div', { class: 'meta', style: 'text-align:center;margin-top:4px', text: 'まだ写真がありません（絵は分類の目安）' }),
+        noPhoto,
         el('div', { style: 'height:10px' }),
         el('div', { class: 'guide' }, pic('img/photo-guide.webp'), el('span', { text: '備品だけを正面から撮ってください。人・書類・画面は写さない。' })),
         el('div', { style: 'height:8px' }), msg, el('div', { style: 'height:8px' }), pick, el('div', { style: 'height:8px' }), save, file));
