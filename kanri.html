@@ -230,10 +230,11 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
       pic('img/head-kanri.webp', 'head-art'),
       pic('img/login.webp', 'scene'),
       el('h1', { text: '備品ボード 管理', style: 'font-size:20px;margin:0 0 4px' }),
-      el('div', { class: 'meta', text: '写真係・管理部の人だけが使うページです。ID とパスワードは管理している人から受け取ってください。' }),
+      el('div', { class: 'meta', text: '写真係・管理部の人だけが使うページです。ID は管理部の人から受け取ってください。パスワードは自分で決めます。' }),
       el('label', { for: 'uid', text: 'ID' }), id,
       el('label', { for: 'upw', text: 'パスワード' }), pw,
-      el('div', { style: 'height:12px' }), msg, el('div', { style: 'height:8px' }), go);
+      el('div', { style: 'height:12px' }), msg, el('div', { style: 'height:8px' }), go,
+      el('button', { class: 'btn wide', type: 'button', text: 'はじめてのログイン（はじめのコードがある人）', style: 'margin-top:10px', onclick: function () { firstView(id.value.trim()); } }));
     form.onsubmit = function (e) {
       e.preventDefault();
       if (!id.value.trim() || !pw.value) { msg.className = 'msg err'; msg.textContent = 'ID とパスワードを入れてください。'; return; }
@@ -246,6 +247,47 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     };
     show(note ? el('div', { class: 'msg err', text: note }) : null, form);
     id.focus();
+  }
+
+  /* はじめてのログイン：ID と「はじめのコード」（管理部から受け取った6桁）で、自分のパスワードを決める。
+     パスワードを忘れた時も、管理部に新しいコードを出してもらってここから決め直す */
+  function firstView(preId) {
+    document.getElementById('hd').hidden = true;
+    var id = el('input', { type: 'text', id: 'fid', autocomplete: 'username', autocapitalize: 'off', spellcheck: 'false', value: preId || '' });
+    var code = el('input', { type: 'text', id: 'fcode', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '7', placeholder: '6桁の数字' });
+    var n1 = el('input', { type: 'password', id: 'fpw1', autocomplete: 'new-password', placeholder: '8文字以上' });
+    var n2 = el('input', { type: 'password', id: 'fpw2', autocomplete: 'new-password', placeholder: 'もう一度' });
+    var msg = el('div');
+    var go = el('button', { class: 'btn primary wide', type: 'submit', text: 'パスワードを決めてログイン' });
+    var form = el('form', { class: 'card' },
+      el('h1', { text: 'はじめてのログイン', style: 'font-size:20px;margin:0 0 4px' }),
+      el('div', { class: 'meta', text: '管理部の人から受け取った ID と「はじめのコード」（6桁）を入れて、自分のパスワードを決めてください。コードは1回だけ使えて、7日で使えなくなります。パスワードを忘れた時も、管理部に新しいコードを出してもらって、ここから決め直します。' }),
+      el('label', { for: 'fid', text: 'ID' }), id,
+      el('label', { for: 'fcode', text: 'はじめのコード' }), code,
+      el('label', { for: 'fpw1', text: '自分で決めるパスワード' }), n1,
+      el('label', { for: 'fpw2', text: 'パスワード（もう一度）' }), n2,
+      el('div', { class: 'meta', text: 'パスワードは、管理部の人にも見えません。メモする時は人に見られない所に。' }),
+      el('div', { style: 'height:8px' }), msg, el('div', { style: 'height:8px' }), go,
+      el('button', { class: 'btn wide', type: 'button', text: '← ふつうのログインに戻る', style: 'margin-top:10px', onclick: function () { loginView(); } }));
+    form.onsubmit = function (e) {
+      e.preventDefault();
+      msg.className = 'msg err';
+      var c = code.value.replace(/\s/g, '');
+      if (!id.value.trim() || !/^\d{6}$/.test(c)) { msg.textContent = 'ID と、6桁のはじめのコードを入れてください。'; return; }
+      if (n1.value.length < 8) { msg.textContent = 'パスワードは8文字以上にしてください。'; return; }
+      if (n1.value !== n2.value) { msg.textContent = 'パスワードが2回とも同じか確かめてください。'; return; }
+      go.disabled = true; go.textContent = '確かめています…'; msg.className = ''; msg.textContent = '';
+      var again = function (t) { msg.className = 'msg err'; msg.textContent = t; go.disabled = false; go.textContent = 'パスワードを決めてログイン'; };
+      call({ action: 'firstLogin', id: id.value.trim(), code: c, pw: n1.value }).then(function (r) {
+        if (!r.ok) return again(USER_ERR[r.error] || errText(r));
+        n1.value = n2.value = code.value = '';
+        S.sess = { token: r.token, user: r.user, exp: Date.now() + (r.expiresIn - 60) * 1000 };
+        saveSess(S.sess); start();
+        setTimeout(function () { toastMsg('パスワードを決めました。次からは ID とこのパスワードでログインします。'); }, 300);
+      }).catch(function () { again(errText(null)); });
+    };
+    show(form);
+    (preId ? code : id).focus();
   }
 
   function logout(expired) {
@@ -375,10 +417,28 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
 
   /* ---------- 設定：利用者（アカウント）の発行・変更（管理部だけ） ---------- */
   var USER_ERR = { id: 'ID は英数字と . _ - で3〜30文字にしてください。', id_taken: 'その ID はもう使われています。', pw_short: 'パスワードは8文字以上にしてください。',
-    last_admin: '管理部が誰もいなくなるので、この変更はできません（ほかに管理部の人を先に足してください）。', unknown: 'その利用者が見つかりません。読み直してください。' };
+    last_admin: '管理部が誰もいなくなるので、この変更はできません（ほかに管理部の人を先に足してください）。', unknown: 'その利用者が見つかりません。読み直してください。',
+    code: 'ID かはじめのコードが違います。数字を確かめてください。', code_expired: 'はじめのコードの期限（7日）が切れています。管理部の人に新しいコードを出してもらってください。' };
+  function md(iso) { var t = new Date(iso); return (t.getMonth() + 1) + '/' + t.getDate(); }
+  function pwState(x) {
+    if (x.codeExp) return new Date(x.codeExp) < new Date() ? '・コードの期限切れ（出し直しが要る）' : '・はじめのコード待ち（' + md(x.codeExp) + ' まで）';
+    return x.hasPw ? '' : '・パスワード未設定';
+  }
+  /* 発行したコードを1回だけ大きく見せる（閉じると二度と出ない。GAS にもハッシュしか残らない） */
+  function codeView(name, id, code, exp, again) {
+    show(el('div', { class: 'card setsec' },
+      el('h2', { text: again ? name + ' さんの新しいはじめのコード' : name + ' さんの ID を発行しました', style: 'font-size:18px;margin:0' }),
+      el('div', { class: 'meta', text: '次の2つを本人に直接（口頭か手渡しのメモで）伝えてください。メールやチャットには残さないでください。' }),
+      el('div', { class: 'meta', text: 'ID' }), el('div', { text: id, style: 'font:700 22px var(--f-mono);letter-spacing:.04em' }),
+      el('div', { class: 'meta', text: 'はじめのコード' }), el('div', { text: code.slice(0, 3) + ' ' + code.slice(3), style: 'font:700 40px var(--f-mono);letter-spacing:.12em' }),
+      el('div', { class: 'msg', text: md(exp) + ' まで（7日間）、1回だけ使えます。本人がログインの画面の「はじめてのログイン」で ID とこのコードを入れ、自分のパスワードを決めます。' + (again ? '今のパスワードは、本人が新しいパスワードを決めるまで使えます。' : '') }),
+      el('div', { class: 'msg err', text: 'この画面を閉じると、コードは二度と出ません（分からなくなったら、もう一度出し直せます）。' }),
+      el('button', { class: 'btn primary wide', type: 'button', text: '伝えたので閉じる', onclick: function () { settingsView(); } })));
+    document.querySelectorAll('#tabs button').forEach(function (b) { b.setAttribute('aria-selected', 'false'); });
+  }
   function usersCard() {
     var box = el('div', { class: 'card setsec' }, el('h3', { text: '利用者（アカウント）' }),
-      el('div', { class: 'meta', text: '写真係・管理部の ID の発行と、役割・所属の変更、止める（使わない）ができます。パスワードは本人に直接伝えてください（メールやチャットに残さない）。' }));
+      el('div', { class: 'meta', text: '写真係・管理部の ID の発行と、役割・所属の変更、止める（使わない）ができます。パスワードは本人が決めます。発行すると「はじめのコード」（6桁）が出るので、ID と一緒に本人に直接伝えてください。' }));
     var list = el('div', { class: 'list' }, el('div', { class: 'empty', text: '読み込んでいます…' }));
     var add = el('button', { class: 'btn primary', type: 'button', text: '＋ 利用者を足す', style: 'align-self:flex-start', onclick: function () { userForm(null); } });
     box.append(add, list);
@@ -387,7 +447,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
       S.users = r.users; S.roles = r.roles;
       list.replaceChildren.apply(list, r.users.map(function (x) {
         return el('button', { class: 'item', type: 'button', style: x.use ? null : 'opacity:.55', onclick: function () { userForm(x); } },
-          el('span', { class: 'nm' }, x.name, el('div', { class: 'meta', style: 'font-weight:400', text: x.id + (x.dept ? '・' + x.dept : '') + (x.hasPw ? '' : '・パスワード未設定') })),
+          el('span', { class: 'nm' }, x.name, el('div', { class: 'meta', style: 'font-weight:400', text: x.id + (x.dept ? '・' + x.dept : '') + pwState(x) })),
           el('span', { class: 'tag ' + (x.role === '管理部' ? 'doing' : 'has'), text: x.role }), !x.use && el('span', { class: 'tag none', text: '止めている' }));
       }));
     }).catch(function (e) { fail(e); });
@@ -401,17 +461,25 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     var fdept = f('uDept', '所属（表示だけ）', d.dept, '例：管理部');
     var frole = el('select', { id: 'uRole' }, (S.roles || ['管理部', '写真係']).map(function (r) { return el('option', { value: r, text: r + (r === '管理部' ? '（連絡の対応・備品・設定まで全部）' : '（写真の登録だけ）'), selected: d.role === r }); }));
     var fuse = el('input', { type: 'checkbox', id: 'uUse' }); fuse.checked = d.use !== false;
-    var fpw = f('uPw', isNew ? 'はじめのパスワード（8文字以上）' : 'パスワードを変える時だけ入れる（8文字以上）', '', '', 'password'); fpw[1].autocomplete = 'new-password';
+    var reset = isNew ? null : el('button', { class: 'btn', type: 'button', text: 'パスワードを作り直してもらう（新しいコードを出す）', style: 'align-self:flex-start' });
+    if (reset) reset.onclick = function () {
+      if (!confirm(d.name + ' さんに新しい「はじめのコード」を出します。本人が新しいパスワードを決めるまでは、今のパスワードも使えます。出しますか？')) return;
+      reset.disabled = true;
+      call({ action: 'userResetCode', id: d.id }).then(function (r) {
+        if (!r.ok) { reset.disabled = false; msg.className = 'msg err'; msg.textContent = USER_ERR[r.error] || errText(r); return; }
+        codeView(d.name, d.id, r.code, r.codeExp, true);
+      }).catch(function (e) { reset.disabled = false; fail(e); });
+    };
     var msg = el('div');
     var save = el('button', { class: 'btn primary wide', type: 'button', text: isNew ? 'この ID を発行する' : '保存する' });
     save.onclick = function () {
       msg.className = ''; msg.textContent = '';
       save.disabled = true;
-      call({ action: 'userSave', user: { isNew: isNew, id: fid[1].value.trim(), name: fname[1].value, dept: fdept[1].value, role: frole.value, use: fuse.checked }, pw: fpw[1].value }).then(function (r) {
-        fpw[1].value = '';
+      call({ action: 'userSave', user: { isNew: isNew, id: fid[1].value.trim(), name: fname[1].value, dept: fdept[1].value, role: frole.value, use: fuse.checked } }).then(function (r) {
         if (!r.ok) { save.disabled = false; msg.className = 'msg err'; msg.textContent = USER_ERR[r.error] || errText(r); return; }
+        if (isNew && r.code) return codeView(fname[1].value.trim(), fid[1].value.trim(), r.code, r.codeExp, false);
         settingsView();
-        setTimeout(function () { toastMsg(isNew ? 'ID を発行しました。パスワードは本人に直接伝えてください。' : '保存しました。'); }, 50);
+        setTimeout(function () { toastMsg('保存しました。'); }, 50);
       }).catch(function (e) { save.disabled = false; fail(e); });
     };
     var mine = S.sess && d.id === S.sess.user.id;
@@ -420,7 +488,9 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
         el('h2', { text: isNew ? '利用者を足す（ID の発行）' : d.name + ' さんを直す', style: 'font-size:18px;margin:0' }),
         fid, fname, fdept, el('label', { for: 'uRole', text: '役割（できること）' }), frole,
         el('label', { style: 'display:flex;gap:8px;align-items:center;color:var(--ink)' }, fuse, '使う（外すと、すぐにログインできなくなります）'),
-        fpw,
+        isNew ? el('div', { class: 'meta', text: 'パスワードはここでは決めません。発行すると「はじめのコード」が出るので、本人がそれを使って自分で決めます。' })
+          : el('div', { class: 'meta', text: '状態：' + (pwState(d).replace(/^・/, '') || 'パスワード設定済み') }),
+        reset,
         mine ? el('div', { class: 'meta', text: '自分の役割を外す・止める時は、ほかに管理部の人が要ります。' }) : null,
         msg, save));
     document.querySelectorAll('#tabs button').forEach(function (b) { b.setAttribute('aria-selected', 'false'); });
