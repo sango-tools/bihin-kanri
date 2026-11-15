@@ -138,8 +138,8 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
     }
     btn.type = 'button';
     btn.onclick = function () { send(btn); };
-    var more = el('a', 'meta', 'ほかに欲しい物を伝える・備品の一覧');
-    more.href = 'list.html#k=' + encodeURIComponent(key);
+    var more = el('a', 'meta', '備品の一覧・ほかに欲しい物を伝える');
+    more.href = 'list.html#k=' + encodeURIComponent(key) + '&tab=list';
     more.style.textAlign = 'center';
     nodes.push(el('div', 'spacer'), btn, more);
     show.apply(null, nodes);

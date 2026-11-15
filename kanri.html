@@ -54,6 +54,12 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
 .tag.doing{background:var(--amber-soft);color:var(--amber)}
 .tag.has{background:var(--green-soft);color:var(--green)}
 .tag.none{background:var(--paper);color:var(--muted);border:1px solid var(--line)}
+.tag.kout{background:var(--stamp);color:#fff}
+.tag.kreq{background:var(--blue);color:#fff}
+.chip{appearance:none;border:1px solid var(--line);background:var(--sheet);color:var(--ink);font:inherit;font-size:13px;border-radius:999px;padding:4px 10px;cursor:pointer;white-space:nowrap}
+.chip.on{background:var(--blue-soft);color:var(--blue);border-color:var(--blue)}
+.chip .cn{font-size:11px;margin-left:5px;color:var(--muted)}
+select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--sheet);color:var(--ink)}
 .rep h2{font-size:17px;margin:4px 0 2px}
 .rep .ops{display:flex;gap:8px;margin-top:10px}
 .rep .ops .btn{flex:1}
@@ -90,7 +96,7 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
   var API = window.BIHIN_API || '';
   var KEY = 'bihin.session';
   var app = document.getElementById('app');
-  var S = { sess: null, tab: null, items: [], q: '', adminItems: null, spots: [] };
+  var S = { sess: null, tab: null, items: [], q: '', adminItems: null, spots: [], tasks: [] };
 
   function el(tag, attrs) {
     var e = document.createElement(tag);
@@ -179,7 +185,7 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
   /* ---------- 骨組み ---------- */
   function start() {
     var u = S.sess.user;
-    var tabs = u.role === '管理部' ? [['reports', '報告'], ['wants', 'ほしい'], ['items', '備品'], ['photos', '写真']] : [['photos', '写真']];
+    var tabs = u.role === '管理部' ? [['tasks', '連絡'], ['spots', '置き場所'], ['items', '備品'], ['photos', '写真']] : [['photos', '写真']];
     if (!S.tab || !tabs.some(function (t) { return t[0] === S.tab; })) S.tab = tabs[0][0];
     document.getElementById('hd').hidden = false;
     document.getElementById('who').textContent = u.name + '（' + u.role + '）';
@@ -187,7 +193,132 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
     nav.replaceChildren.apply(nav, tabs.map(function (t) {
       return el('button', { type: 'button', role: 'tab', 'aria-selected': String(S.tab === t[0]), text: t[1], onclick: function () { S.tab = t[0]; start(); } });
     }));
-    if (S.tab === 'reports') reportsView(); else if (S.tab === 'wants') wantsView(); else if (S.tab === 'items') itemsView(); else photosView();
+    if (S.tab === 'tasks') tasksView(); else if (S.tab === 'spots') spotsView(); else if (S.tab === 'items') itemsView(); else photosView();
+  }
+
+  /* ---------- 管理部：連絡（在庫切れとほしい！を1つに。見守りの「疑問・気づき一覧」と同じ絞り込み） ---------- */
+  function lsGet(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  var TF = { kind: lsGet('bihin.t.kind', 'all'), state: 'open', q: '', sort: lsGet('bihin.t.sort', 'new') };
+  function tasksView(flash) {
+    show(el('div', { class: 'empty', text: '連絡を読み込んでいます…' }));
+    call({ action: 'tasks' }).then(function (r) {
+      if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
+      S.tasks = r.tasks; drawTasks(flash);
+    }).catch(fail);
+  }
+  function drawTasks(flash) {
+    var ts = S.tasks;
+    var cnt = function (f) { return ts.filter(f).length; };
+    var kinds = [['all', 'すべて', function () { return true; }], ['out', '在庫切れ', function (t) { return t.kind === 'out'; }], ['req', 'ほしい！', function (t) { return t.kind === 'req'; }]];
+    var states = [['open', 'まだ', function (t) { return !t.done; }], ['done', '済み', function (t) { return t.done; }], ['all', 'すべて', function () { return true; }]];
+    var kf = kinds.find(function (k) { return k[0] === TF.kind; }) || kinds[0];
+    var sf = states.find(function (s) { return s[0] === TF.state; }) || states[0];
+    function chipRow(label, opts, cur, onPick, base) {
+      return el('div', { class: 'row', style: 'gap:6px' }, el('span', { class: 'meta', text: label, style: 'width:30px' }), opts.map(function (o) {
+        return el('button', { class: 'chip' + (cur === o[0] ? ' on' : ''), type: 'button', onclick: function () { onPick(o[0]); } },
+          o[1], el('span', { class: 'cn', text: String(cnt(function (t) { return base(t) && o[2](t); })) }));
+      }));
+    }
+    var q = el('input', { type: 'search', placeholder: '名前・内容・置き場所で探す', value: TF.q, 'aria-label': '探す' });
+    var sort = el('select', { 'aria-label': '並べ方', style: 'width:auto;flex:none' },
+      [['new', '新しい順'], ['old', '古い順'], ['spot', '置き場所ごと']].map(function (o) { return el('option', { value: o[0], text: o[1], selected: TF.sort === o[0] }); }));
+    var list = el('div', { style: 'display:flex;flex-direction:column;gap:8px' });
+    function fill() {
+      var k = TF.q.trim().toLowerCase();
+      var xs = ts.filter(kf[2]).filter(sf[2]).filter(function (t) { return !k || [t.title, t.name, t.place, t.code, t.itemName].join(' ').toLowerCase().indexOf(k) >= 0; });
+      xs.sort(function (a, b) { return TF.sort === 'old' ? a.at.localeCompare(b.at) : b.at.localeCompare(a.at); });
+      if (!xs.length) return list.replaceChildren(pic('img/empty-reports.webp', 'scene'), el('div', { class: 'empty', text: '当てはまる連絡はありません。', style: 'padding-top:4px' }));
+      if (TF.sort === 'spot') {
+        var groups = {};
+        xs.forEach(function (t) { var g = t.spot || '—'; (groups[g] = groups[g] || []).push(t); });
+        var keys = Object.keys(groups).sort();
+        list.replaceChildren.apply(list, keys.map(function (g) {
+          var nm = (S.spots.find(function (s) { return s.id === g; }) || {}).name;
+          return el('div', {}, el('div', { class: 'meta', style: 'font-weight:700;margin:4px 0', text: g === '—' ? '置き場所なし' : g + '．' + (nm || '') + '（' + groups[g].length + '）' }),
+            el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, groups[g].map(taskCard)));
+        }));
+      } else list.replaceChildren.apply(list, xs.map(taskCard));
+    }
+    q.oninput = function () { TF.q = q.value; fill(); };
+    sort.onchange = function () { TF.sort = sort.value; lsSet('bihin.t.sort', TF.sort); fill(); };
+    var head = el('div', { class: 'card', style: 'display:flex;flex-direction:column;gap:6px' },
+      chipRow('種類', kinds, TF.kind, function (v) { TF.kind = v; lsSet('bihin.t.kind', v); drawTasks(); }, sf[2]),
+      chipRow('状態', states, TF.state, function (v) { TF.state = v; drawTasks(); }, kf[2]),
+      el('div', { class: 'row', style: 'flex-wrap:nowrap' }, q, sort),
+      el('div', { class: 'row' }, el('span', { class: 'meta', style: 'flex:1', text: '済んだ連絡は60日まで出します。' }), el('button', { class: 'btn small', type: 'button', text: '読み直す', onclick: function () { tasksView(); } })));
+    if (!S.spots.length) call({ action: 'itemsAdmin' }).then(function (x) { if (x.ok) { S.spots = x.spots; S.adminItems = x.items; if (TF.sort === 'spot') fill(); } }).catch(function () {});
+    fill();
+    show(flash, head, list);
+  }
+  function taskCard(t) {
+    var isOut = t.kind === 'out';
+    var cls = t.done ? 'has' : t.state === '対応中' ? 'doing' : 'open';
+    var ops = el('div', { class: 'row', style: 'margin-top:8px' });
+    function act(body, label, btn) {
+      btn.disabled = true;
+      call(body).then(function (r) {
+        if (!r.ok) { btn.disabled = false; return alert(errText(r)); }
+        tasksView(el('div', { class: 'msg ok', text: (t.title || '') + ' を「' + label + '」にしました。' }));
+      }).catch(function (e) { btn.disabled = false; fail(e); });
+    }
+    function b(label, cls2, body) { var x = el('button', { class: 'btn small' + (cls2 ? ' ' + cls2 : ''), type: 'button', text: label }); x.onclick = function () { act(body, label.replace('にする', '').replace('に戻す', ''), x); }; return x; }
+    if (isOut) {
+      if (!t.done && t.state !== '対応中') ops.append(b('対応中にする', '', { action: 'setState', id: t.id, state: '対応中' }));
+      if (!t.done) ops.append(b('補充済みにする', 'done', { action: 'setState', id: t.id, state: '補充済み' }));
+    } else {
+      if (!t.done && t.state !== '対応中') ops.append(b('対応中にする', '', { action: 'setWantState', id: t.id, state: '対応中' }));
+      if (!t.done) ops.append(b('完了にする', 'done', { action: 'setWantState', id: t.id, state: '完了' }));
+      else ops.append(b('未対応に戻す', '', { action: 'setWantState', id: t.id, state: '未対応' }));
+      var rb = el('button', { class: 'btn small', type: 'button', text: '返信する' });
+      rb.onclick = function () {
+        var inp = el('input', { type: 'text', maxlength: '300', placeholder: '返信（例：明日届きます）', 'aria-label': '返信' });
+        var send = el('button', { class: 'btn small primary', type: 'button', text: '送る' });
+        send.onclick = function () { if (inp.value.trim()) act({ action: 'reply', id: t.id, text: inp.value }, '返信済み', send); };
+        rb.replaceWith(el('div', { class: 'row', style: 'flex-wrap:nowrap;width:100%' }, inp, send));
+        inp.focus();
+      };
+      ops.append(rb);
+    }
+    var meta = isOut
+      ? [t.place && '置き場所：' + t.place, fmt(t.at) + ' から・' + t.count + '人', t.by && '対応：' + t.by, t.done && t.doneAt && '補充 ' + fmt(t.doneAt)]
+      : [fmt(t.at), t.name, t.itemName && '備品：' + t.itemName];
+    return el('div', { class: 'card rep' },
+      el('div', { class: 'row' }, el('span', { class: 'tag ' + (isOut ? 'kout' : 'kreq'), text: isOut ? '在庫切れ' : 'ほしい！' }), el('span', { class: 'tag ' + cls, text: t.state }), t.code && el('span', { class: 'meta', text: t.code })),
+      el('h2', { text: isOut ? t.title + ' がなくなりました' : t.title }),
+      el('div', { class: 'meta', text: meta.filter(Boolean).join('　') }),
+      !isOut && (t.replies || []).map(function (x) { return el('div', { class: 'meta', style: 'border-left:3px solid var(--blue);padding-left:8px;margin:4px 0', text: x.text + '　— ' + x.by + '・' + fmt(x.at) }); }),
+      ops.childNodes.length ? ops : null);
+  }
+
+  /* ---------- 管理部：置き場所ごとの状況（見守りの「現場の状況」と同じく、手当てが要る所を上に） ---------- */
+  function spotsView() {
+    show(el('div', { class: 'empty', text: '置き場所の状況を読み込んでいます…' }));
+    call({ action: 'spotStatus' }).then(function (r) {
+      if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
+      var xs = r.spots.slice().sort(function (a, b) { return b.out - a.out || b.soon - a.soon || a.id.localeCompare(b.id); });
+      show(el('div', { class: 'meta', text: '在庫切れの多い順です。置き場所を押すと、そこの備品と補充の履歴が出ます。' }),
+        el('div', { class: 'list' }, xs.map(function (s) {
+          return el('button', { class: 'item', type: 'button', onclick: function () { spotDetail(s); } },
+            el('b', { text: s.id, style: 'width:22px;font-size:18px;color:var(--stamp)' }),
+            el('span', { class: 'nm' }, s.name, el('div', { class: 'meta', style: 'font-weight:400', text: s.lastRefill ? '前回の補充 ' + fmt(s.lastRefill).split(' ')[0] + '・' + s.lastRefillItem : 'まだ補充の記録がありません' })),
+            s.out ? el('span', { class: 'tag open', text: '在庫切れ ' + s.out }) : s.soon ? el('span', { class: 'tag doing', text: 'そろそろ ' + s.soon }) : el('span', { class: 'meta', text: s.items.length + '品目' }));
+        })));
+    }).catch(fail);
+  }
+  function spotDetail(s) {
+    var items = s.items.slice().sort(function (a, b) { return (b.out - a.out) || (b.soon - a.soon) || a.name.localeCompare(b.name, 'ja'); });
+    show(el('button', { class: 'btn small', type: 'button', text: '← 置き場所の一覧へ', style: 'align-self:flex-start', onclick: spotsView }),
+      el('h2', { text: s.id + '．' + s.name, style: 'font-size:18px;margin:0' }),
+      items.length ? el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, items.map(function (i) {
+        var line = [i.refills.length ? '補充 ' + i.refills.length + '回' : '補充の記録なし', i.avgDays ? '平均 ' + i.avgDays + '日ごとに切れる' : '', i.sinceDays != null ? '前回の補充から ' + i.sinceDays + '日' : ''].filter(Boolean).join('・');
+        var hist = i.outs.map(function (o) { return fmt(o).split(' ')[0]; }).join(' → ');
+        return el('div', { class: 'card' },
+          el('div', { class: 'row' }, el('b', { text: i.name, style: 'flex:1' }), i.out ? el('span', { class: 'tag open', text: '在庫切れ' }) : i.soon ? el('span', { class: 'tag doing', text: 'そろそろ' }) : null),
+          el('div', { class: 'meta', text: line }),
+          hist && el('div', { class: 'meta', text: '在庫切れの報告：' + hist }),
+          (!i.avgDays && i.outs.length > 0) ? el('div', { class: 'meta', text: '（「そろそろ」の目安は、記録が3回たまってから出ます）' }) : null);
+      })) : el('div', { class: 'empty', text: 'この置き場所の備品は、まだ登録されていません。' }));
   }
 
   function fail(e) { if (!e || !e.handled) show(el('div', { class: 'msg err', text: errText(null) })); }
