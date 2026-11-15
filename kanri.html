@@ -36,6 +36,13 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
 .btn.done{background:var(--green);border-color:var(--green);color:#fff;font-weight:700}
 .btn.wide{width:100%;padding:14px;font-size:17px}
 .btn.small{padding:6px 10px;font-size:13px}
+.btn{white-space:nowrap;flex:none}
+.qrgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}
+.qrtag{background:#fff;color:#1b2430;border:1px solid #c9d1db;border-radius:8px;padding:8px;display:flex;gap:10px;align-items:center;break-inside:avoid}
+.qrtag .qr{width:96px;height:96px;flex:none}.qrtag .qr img,.qrtag .qr canvas{width:96px!important;height:96px!important}
+.qrtag .nm{font-size:16px;font-weight:700;line-height:1.3}.qrtag .meta{color:#5d6b7a;font-size:11px}
+@media print{ header,.noprint{display:none!important} body{background:#fff} main{padding:0} }
+.row input{flex:1;min-width:0}
 .btn[disabled]{opacity:.55}
 .msg{font-size:14px;border-radius:10px;padding:10px 12px}
 .msg.err{background:var(--stamp-soft);color:var(--stamp)}
@@ -83,7 +90,7 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
   var API = window.BIHIN_API || '';
   var KEY = 'bihin.session';
   var app = document.getElementById('app');
-  var S = { sess: null, tab: null, items: [], q: '' };
+  var S = { sess: null, tab: null, items: [], q: '', adminItems: null, spots: [] };
 
   function el(tag, attrs) {
     var e = document.createElement(tag);
@@ -92,7 +99,7 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
       else if (k.slice(0, 2) === 'on') e[k] = attrs[k];
       else if (attrs[k] != null && attrs[k] !== false) e.setAttribute(k, attrs[k]);
     }
-    for (var i = 2; i < arguments.length; i++) { var c = arguments[i]; if (c != null && c !== false) e.append(c); }
+    (function add(xs) { for (var i = 0; i < xs.length; i++) { var c = xs[i]; if (Array.isArray(c)) add(c); else if (c != null && c !== false) e.append(c); } })([].slice.call(arguments, 2));
     return e;
   }
   function show() { app.replaceChildren.apply(app, Array.prototype.filter.call(arguments, Boolean)); }
@@ -125,7 +132,7 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
       .finally(function () { clearTimeout(timer); });
   }
   var ERR = { login: 'ID かパスワードが違います。', locked: '続けて間違えたため、15分止めています。時間をおいて試してください。', role: 'この役割ではできない操作です。',
-    too_large: '写真が大き過ぎます。', photo: '写真を読めませんでした。別の写真で試してください。', unknown: '見つかりませんでした。一覧を読み直してください。', busy: '混み合っています。もう一度押してください。' };
+    too_large: '写真が大き過ぎます。', input: '入力を確かめてください。', config: '報告ページのURLがスプレッドシートに設定されていません。', photo: '写真を読めませんでした。別の写真で試してください。', unknown: '見つかりませんでした。一覧を読み直してください。', busy: '混み合っています。もう一度押してください。' };
   function errText(r) {
     if (r && ERR[r.error]) return ERR[r.error];
     // 原因を追えるよう、短い言葉だけ添える（中身は GAS の「エラー記録」シートに残る）
@@ -172,7 +179,7 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
   /* ---------- 骨組み ---------- */
   function start() {
     var u = S.sess.user;
-    var tabs = u.role === '管理部' ? [['reports', '報告'], ['photos', '写真']] : [['photos', '写真']];
+    var tabs = u.role === '管理部' ? [['reports', '報告'], ['wants', 'ほしい'], ['items', '備品'], ['photos', '写真']] : [['photos', '写真']];
     if (!S.tab || !tabs.some(function (t) { return t[0] === S.tab; })) S.tab = tabs[0][0];
     document.getElementById('hd').hidden = false;
     document.getElementById('who').textContent = u.name + '（' + u.role + '）';
@@ -180,7 +187,165 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
     nav.replaceChildren.apply(nav, tabs.map(function (t) {
       return el('button', { type: 'button', role: 'tab', 'aria-selected': String(S.tab === t[0]), text: t[1], onclick: function () { S.tab = t[0]; start(); } });
     }));
-    if (S.tab === 'reports') reportsView(); else photosView();
+    if (S.tab === 'reports') reportsView(); else if (S.tab === 'wants') wantsView(); else if (S.tab === 'items') itemsView(); else photosView();
+  }
+
+  function fail(e) { if (!e || !e.handled) show(el('div', { class: 'msg err', text: errText(null) })); }
+
+  /* ---------- 管理部：ほしい！ ---------- */
+  var WSTATE = { '未対応': 'open', '対応中': 'doing', '完了': 'has' };
+  function wantsView(flash) {
+    show(el('div', { class: 'empty', text: 'リクエストを読み込んでいます…' }));
+    call({ action: 'wantsAdmin' }).then(function (r) {
+      if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
+      var head = el('div', { class: 'row' }, el('div', { class: 'meta', style: 'flex:1', text: 'ほしい！ ' + r.wants.length + '件（完了は60日まで出します）' }),
+        el('button', { class: 'btn small', type: 'button', text: '読み直す', onclick: function () { wantsView(); } }));
+      if (!r.wants.length) return show(flash, head, pic('img/empty-reports.webp', 'scene'), el('div', { class: 'empty', text: 'いま出ているリクエストはありません。' }));
+      show.apply(null, [flash, head].concat(r.wants.map(wantCard)));
+    }).catch(fail);
+  }
+  function wantCard(w) {
+    var inp = el('input', { type: 'text', maxlength: '300', placeholder: '返信（例：明日届きます）', 'aria-label': '返信' });
+    var send = el('button', { class: 'btn', type: 'button', text: '返信' });
+    send.onclick = function () {
+      if (!inp.value.trim()) return;
+      send.disabled = true;
+      call({ action: 'reply', id: w.id, text: inp.value }).then(function (r) {
+        if (!r.ok) { send.disabled = false; return alert(errText(r)); }
+        wantsView(el('div', { class: 'msg ok', text: '返信しました。リクエストした人は「ほしい！」のページで見られます。' }));
+      }).catch(function (e) { send.disabled = false; fail(e); });
+    };
+    function st(state) {
+      return el('button', { class: 'btn small', type: 'button', text: state === '未対応' ? '未対応に戻す' : state + 'にする', onclick: function (ev) {
+        ev.target.disabled = true;
+        call({ action: 'setWantState', id: w.id, state: state }).then(function (r) {
+          if (!r.ok) { ev.target.disabled = false; return alert(errText(r)); }
+          wantsView(el('div', { class: 'msg ok', text: '「' + state + '」にしました。' }));
+        }).catch(fail);
+      } });
+    }
+    var ops = el('div', { class: 'row', style: 'margin-top:8px' }, w.state !== '対応中' && w.state !== '完了' && st('対応中'), w.state !== '完了' && st('完了'), w.state === '完了' && st('未対応'));
+    return el('div', { class: 'card rep' },
+      el('div', { class: 'row' }, el('span', { class: 'tag ' + (WSTATE[w.state] || 'open'), text: w.state }), el('span', { class: 'meta', text: fmt(w.at) + (w.name ? '・' + w.name : '') + (w.itemName ? '・' + w.itemName : '') })),
+      el('h2', { text: w.text }),
+      w.replies.map(function (x) { return el('div', { class: 'meta', style: 'border-left:3px solid var(--blue);padding-left:8px;margin:4px 0', text: x.text + '　— ' + x.by + '・' + fmt(x.at) }); }),
+      el('div', { class: 'row', style: 'margin-top:8px;flex-wrap:nowrap' }, inp, send), ops);
+  }
+
+  /* ---------- 管理部：備品・置き場所・通知先・QR ---------- */
+  function itemsView(flash) {
+    show(el('div', { class: 'empty', text: '備品を読み込んでいます…' }));
+    call({ action: 'itemsAdmin' }).then(function (r) {
+      if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
+      S.adminItems = r.items; S.spots = r.spots;
+      var add = el('button', { class: 'btn primary', type: 'button', text: '＋ 備品を足す', onclick: function () { itemForm(null); } });
+      var qr = el('button', { class: 'btn', type: 'button', text: 'QRの札を印刷する', onclick: function () { printQr(null); } });
+      var list = el('div', { class: 'list' }, r.items.map(function (it) {
+        return el('button', { class: 'item', type: 'button', style: it.use ? null : 'opacity:.55', onclick: function () { itemForm(it); } },
+          pic(catArt(it), 'th'), el('span', { class: 'nm', text: it.name }),
+          el('span', { class: 'meta', text: (it.spot || '—') + '・' + it.code }), !it.use && el('span', { class: 'tag none', text: '使わない' }));
+      }));
+      show(flash, el('div', { class: 'row' }, add, qr), list, spotsCard(), notifyCard());
+    }).catch(fail);
+  }
+
+  function itemForm(it) {
+    var d = it || { name: '', spec: '', category: '', spot: '', placeNote: '', use: true };
+    function f(id, label, val, ph) { var i = el('input', { type: 'text', id: id, value: val || '', placeholder: ph || '' }); return [el('label', { for: id, text: label }), i]; }
+    var n = f('fName', '名前（必須）', d.name, '例：ボールペン（黒）');
+    var s = f('fSpec', '仕様・サイズ', d.spec, '例：0.7mm／10本入り');
+    var c = f('fCat', '分類', d.category, '例：筆記具');
+    var cats = Array.from(new Set((S.adminItems || []).map(function (x) { return x.category; }).filter(Boolean)));
+    c[1].setAttribute('list', 'catList');
+    var dl = el('datalist', { id: 'catList' }, cats.map(function (x) { return el('option', { value: x }); }));
+    var sp = el('select', { id: 'fSpot' }, el('option', { value: '', text: '未設定' }), S.spots.map(function (x) { return el('option', { value: x.id, text: x.id + '．' + x.name, selected: d.spot === x.id }); }));
+    var nt = f('fNote', '置き場所の補足', d.placeNote, '例：2段目・左の箱');
+    var use = el('input', { type: 'checkbox', id: 'fUse' }); use.checked = d.use !== false;
+    var msg = el('div');
+    var save = el('button', { class: 'btn primary wide', type: 'button', text: it ? '保存する' : '足す' });
+    save.onclick = function () {
+      if (!n[1].value.trim()) { msg.className = 'msg err'; msg.textContent = '名前を入れてください。'; return; }
+      save.disabled = true;
+      call({ action: 'itemSave', item: { code: it ? it.code : '', name: n[1].value, spec: s[1].value, category: c[1].value, spot: sp.value, placeNote: nt[1].value, use: use.checked } }).then(function (r) {
+        if (!r.ok) { save.disabled = false; msg.className = 'msg err'; msg.textContent = errText(r); return; }
+        itemsView(el('div', { class: 'msg ok', text: (it ? '保存しました' : r.code + ' として足しました。QRの札を印刷して貼ってください') + '。' }));
+      }).catch(function (e) { save.disabled = false; fail(e); });
+    };
+    show(el('button', { class: 'btn small', type: 'button', text: '← 備品の一覧へ', style: 'align-self:flex-start', onclick: function () { itemsView(); } }),
+      el('div', { class: 'card' },
+        el('h2', { text: it ? it.code + ' を直す' : '備品を足す', style: 'font-size:18px;margin:0' }),
+        el('div', { class: 'meta', text: it ? '備品コードは変えられません（QRの中身なので）。' : '備品コードは自動で付きます。' }),
+        n, s, c, dl, el('label', { for: 'fSpot', text: '置き場所' }), sp, nt,
+        el('label', { style: 'display:flex;gap:8px;align-items:center;color:var(--ink)' }, use, '使う（外すと、QRを読んでも報告できなくなります。消しはしません）'),
+        el('div', { style: 'height:10px' }), msg, el('div', { style: 'height:6px' }), save,
+        it && el('div', { style: 'height:8px' }), it && el('button', { class: 'btn wide', type: 'button', text: 'この備品の札を印刷する', onclick: function () { printQr([it.code]); } })));
+  }
+
+  function spotsCard() {
+    var rows = S.spots.map(function (s) {
+      var inp = el('input', { type: 'text', value: s.name, maxlength: '30', 'aria-label': s.id + ' の名前' });
+      var b = el('button', { class: 'btn small', type: 'button', text: '保存' });
+      b.onclick = function () {
+        b.disabled = true;
+        call({ action: 'spotSave', id: s.id, name: inp.value }).then(function (r) { b.disabled = false; b.textContent = r.ok ? '保存しました' : '保存できません'; if (r.ok) S.spots = r.spots; }).catch(function (e) { b.disabled = false; fail(e); });
+      };
+      return el('div', { class: 'row', style: 'flex-wrap:nowrap;margin-top:6px' }, el('b', { text: s.id, style: 'width:20px' }), inp, b);
+    });
+    return el('div', { class: 'card' }, el('h2', { text: '置き場所の名前', style: 'font-size:16px;margin:0' }),
+      el('div', { class: 'meta', text: 'マップの A〜F の名前です。変えると、一覧・報告ページ・通知の表示も変わります。' }), rows);
+  }
+
+  function notifyCard() {
+    var inp = el('input', { type: 'text', id: 'nTo', placeholder: 'メールアドレス（複数はカンマで区切る）', 'aria-label': '通知先' });
+    var msg = el('div', { class: 'meta', text: '読み込んでいます…' });
+    var b = el('button', { class: 'btn small', type: 'button', text: '保存' });
+    call({ action: 'notifyGet' }).then(function (r) {
+      if (!r.ok) { msg.textContent = errText(r); return; }
+      inp.value = r.recipients;
+      msg.textContent = r.live ? '正式運用中：在庫切れ・ほしい！を1時間ごとにまとめて、この宛先に送ります。' : 'いまはテスト運用です（メールは持ち主にだけ届きます）。正式運用への切り替えは持ち主がスプレッドシートで行います。';
+    }).catch(function () {});
+    b.onclick = function () {
+      b.disabled = true;
+      call({ action: 'notifySet', recipients: inp.value }).then(function (r) {
+        b.disabled = false;
+        if (!r.ok) { msg.textContent = r.error === 'email' ? 'メールアドレスの形を確かめてください：' + (r.bad || []).join(', ') : errText(r); return; }
+        inp.value = r.recipients; b.textContent = '保存しました';
+      }).catch(function (e) { b.disabled = false; fail(e); });
+    };
+    return el('div', { class: 'card' }, el('h2', { text: '通知メールの送り先', style: 'font-size:16px;margin:0' }),
+      el('div', { class: 'row', style: 'flex-wrap:nowrap;margin-top:6px' }, inp, b), msg);
+  }
+
+  /* QR の札：選んだ備品（無ければ全部）と「ほしい！・一覧」の札を、このページの中に並べて印刷する
+     （新しい画面を開く形は、スマホやホーム画面のアプリで止められることがあるため） */
+  function printQr(codes) {
+    show(el('div', { class: 'empty', text: 'QRの札を作っています…' }));
+    call({ action: 'qrUrls', codes: codes || [] }).then(function (r) {
+      if (!r.ok) return show(el('div', { class: 'msg err', text: errText(r) }));
+      return loadQrLib().then(function () {
+        var tags = (codes ? [] : [{ code: '', name: 'ほしい！・備品の一覧', spec: '無い物を頼む・どこに何があるか', url: r.listUrl, hint: '棚の近くに1枚貼ってください' }])
+          .concat(r.items.map(function (x) { x.hint = 'なくなったら読んでください'; return x; }));
+        var grid = el('div', { class: 'qrgrid' }, tags.map(function (t) {
+          var box = el('div', { class: 'qr' });
+          new window.QRCode(box, { text: t.url, width: 256, height: 256, correctLevel: window.QRCode.CorrectLevel.M });
+          return el('div', { class: 'qrtag' }, box, el('div', {},
+            el('div', { class: 'nm', text: t.name }), el('div', { class: 'meta', text: [t.code, t.spec].filter(Boolean).join('　') }), el('div', { class: 'meta', text: t.hint })));
+        }));
+        show(el('div', { class: 'row noprint' },
+            el('button', { class: 'btn small', type: 'button', text: '← 備品の一覧へ', onclick: function () { itemsView(); } }),
+            el('button', { class: 'btn primary', type: 'button', text: '印刷する', onclick: function () { window.print(); } })),
+          el('div', { class: 'msg noprint', style: 'background:var(--amber-soft);color:var(--amber)', text: '切り取って、備品の箱・トレイの正面に貼ってください。札には鍵が入っています。社外に出さないでください。' }),
+          grid);
+      });
+    }).catch(fail);
+  }
+  function loadQrLib() {
+    if (window.QRCode) return Promise.resolve();
+    return new Promise(function (res, rej) {
+      var s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+      s.onload = res; s.onerror = rej; document.head.append(s);
+    });
   }
 
   /* ---------- 管理部：報告 ---------- */
