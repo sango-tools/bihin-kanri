@@ -40,6 +40,10 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
 .loading{flex:1;display:grid;place-items:center;color:var(--muted)}
 .retry{appearance:none;border:1px solid var(--line);background:var(--sheet);color:var(--ink);font:inherit;border-radius:12px;padding:12px;width:100%}
 .ph.art img{object-fit:contain;padding:8%;opacity:.9}
+.actarea{display:flex;flex-direction:column;gap:10px}
+.confirm{background:var(--sheet);border:2px solid var(--stamp);border-radius:14px;padding:14px;text-align:center}
+.confirm .cq{font-weight:700;font-size:18px;line-height:1.45;margin-bottom:4px}
+.go.ok{min-height:18vh}
 .ph .cap{position:absolute;bottom:8px;left:0;right:0;font-size:12px;color:var(--muted);font-weight:400}
 .ph{position:relative}
 .scene{width:100%;max-width:320px;height:auto;margin:0 auto;display:block}
@@ -142,12 +146,27 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
       btn = el('button', 'go', 'なくなりました');
     }
     btn.type = 'button';
-    btn.onclick = function () { send(btn); };
     var more = el('a', 'meta', '備品の一覧・ほかに欲しい物を伝える');
     more.href = 'list.html#k=' + encodeURIComponent(key) + '&tab=list';
     more.style.textAlign = 'center';
-    nodes.push(el('div', 'spacer'), btn, more);
+    // 押してすぐ送らず、確かめる画面を挟む（2026-11-15 木村さん）。写真と名前はそのまま見えるようにする
+    var area = el('div', 'actarea');
+    area.append(btn, more);
+    btn.onclick = function () { confirmSend(area, item, !!open, btn, more); };
+    nodes.push(el('div', 'spacer'), area);
     show.apply(null, nodes);
+  }
+
+  function confirmSend(area, item, again, btn, more) {
+    var q = el('div', 'confirm');
+    q.append(el('div', 'cq', again ? 'この備品が無かったことを、管理部に伝えますか？' : '「' + item.name + '」がなくなったと、管理部に送りますか？'),
+      el('div', 'meta', '写真と名前が、棚の物と同じか確かめてから送ってください。'));
+    var ok = el('button', 'go ok', again ? '伝える' : '送る');
+    var cancel = el('button', 'retry', 'やめる');
+    ok.type = 'button'; cancel.type = 'button';
+    ok.onclick = function () { cancel.disabled = true; send(ok); };
+    cancel.onclick = function () { area.replaceChildren(btn, more); };
+    area.replaceChildren(q, ok, cancel);
   }
 
   function send(btn) {
