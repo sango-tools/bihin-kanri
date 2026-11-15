@@ -37,8 +37,20 @@ input[type=text],input[type=password],input[type=search]{width:100%;font:inherit
 .btn.wide{width:100%;padding:14px;font-size:17px}
 .btn.small{padding:6px 10px;font-size:13px}
 .btn{white-space:nowrap;flex:none}
-.ndot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--stamp);margin-left:4px;vertical-align:2px}
+.hacts{display:flex;gap:4px;margin-left:auto;flex:none}
+.ibtn{position:relative;appearance:none;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--sheet);color:var(--ink);display:grid;place-items:center;cursor:pointer;padding:0}
+.ibtn:hover{background:var(--paper)}
+.ibtn svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.ndot{position:absolute;top:6px;right:7px;width:9px;height:9px;border-radius:50%;background:var(--stamp);border:2px solid var(--sheet)}
 .ndot[hidden]{display:none}
+.mepop{position:fixed;z-index:20;top:62px;right:max(16px,calc((100vw - 1240px)/2 + 16px));min-width:200px;background:var(--sheet);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:12px;display:flex;flex-direction:column;gap:10px}
+.mepop[hidden]{display:none}
+.mehead{display:flex;gap:10px;align-items:center}
+.meav{width:36px;height:36px;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center}
+.meav svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8}
+.mename{font-weight:700;font-size:14px}
+.setsec{display:flex;flex-direction:column;gap:10px}
+.setsec h3{font-size:15px;margin:6px 0 0}
 .qrgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}
 .qrtag{background:#fff;color:#1b2430;border:1px solid #c9d1db;border-radius:8px;padding:8px;display:flex;gap:10px;align-items:center;break-inside:avoid}
 .qrtag .qr{width:96px;height:96px;flex:none}.qrtag .qr img,.qrtag .qr canvas{width:96px!important;height:96px!important}
@@ -131,10 +143,20 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
 <body>
 <header id="hd" hidden>
   <div class="wrap">
-    <div class="top"><img class="brandIcon" src="icon-180.png" alt=""><h1 class="brand">備品ボード<small>管理用</small></h1><span class="who" id="who"></span><button class="btn small" id="news" type="button" aria-label="お知らせ">お知らせ<span id="newsDot" class="ndot" hidden></span></button><button class="btn small" id="out" type="button">ログアウト</button></div>
+    <div class="top"><img class="brandIcon" src="icon-180.png" alt=""><h1 class="brand">備品ボード<small>管理用</small></h1>
+      <div class="hacts">
+        <button class="ibtn" id="news" type="button" aria-label="お知らせ" title="お知らせ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><span id="newsDot" class="ndot" hidden></span></button>
+        <button class="ibtn" id="gear" type="button" aria-label="設定" title="設定"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+        <button class="ibtn" id="me" type="button" aria-label="利用者" title="利用者" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></button>
+      </div>
+    </div>
     <nav id="tabs"></nav>
   </div>
 </header>
+<div class="mepop" id="mePop" hidden role="menu">
+  <div class="mehead"><div class="meav"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div><div id="who" class="mename"></div></div>
+  <button class="btn" id="out" type="button" role="menuitem">ログアウト</button>
+</div>
 <main class="wrap" id="app"><div class="empty">読み込んでいます…</div></main>
 <script src="config.js"></script>
 <script src="version.js"></script>
@@ -229,7 +251,15 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     try { Object.keys(localStorage).filter(function (k) { return k.indexOf('bihin.c.') === 0; }).forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
     loginView(expired ? 'ログインの期限が切れました。もう一度ログインしてください。' : null);
   }
-  document.getElementById('out').onclick = function () { logout(false); };
+  document.getElementById('out').onclick = function () { closeMe(); logout(false); };
+
+  /* 右上の利用者マーク：押すと名前とログアウトが出る（一般的な Web サイトと同じ形） */
+  var mePop = document.getElementById('mePop'), meBtn = document.getElementById('me');
+  function closeMe() { mePop.hidden = true; meBtn.setAttribute('aria-expanded', 'false'); }
+  meBtn.onclick = function (e) { e.stopPropagation(); var open = mePop.hidden; mePop.hidden = !open; meBtn.setAttribute('aria-expanded', String(open)); };
+  document.addEventListener('click', function (e) { if (!mePop.hidden && !mePop.contains(e.target)) closeMe(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMe(); });
+  document.getElementById('gear').onclick = function () { settingsView(); };
 
   /* ---------- お知らせ（現場ナビと同じ。version.js の BIHIN_NEWS。読んでいない分があればボタンに印） ---------- */
   var NEWS = window.BIHIN_NEWS || [];
@@ -272,6 +302,39 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
       return el('button', { type: 'button', role: 'tab', 'aria-selected': String(S.tab === t[0]), text: t[1], onclick: function () { S.tab = t[0]; start(); } });
     }));
     if (S.tab === 'tasks') tasksView(); else if (S.tab === 'spots') spotsView(); else if (S.tab === 'items') itemsView(); else photosView();
+  }
+
+  /* ---------- 設定（右上の歯車）：画面の見え方と、管理部の設定（置き場所の名前・通知の送り先） ---------- */
+  var PREF = { size: lsGetRaw('bihin.pref.size', 'normal'), wide: lsGetRaw('bihin.pref.wide', 'on') };
+  function lsGetRaw(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
+  function applyPref() {
+    document.body.style.zoom = PREF.size === 'large' ? '1.15' : '';
+    document.body.classList.toggle('narrow', PREF.wide === 'off');   // PC でもスマホと同じ並べ方にする（theme.css）
+  }
+  applyPref();
+  function settingsView() {
+    var u = S.sess && S.sess.user;
+    if (!u) return;
+    function choice(label, key, opts) {
+      return el('div', {}, el('div', { class: 'meta', text: label, style: 'margin-bottom:4px' }), el('div', { class: 'row', style: 'gap:6px' }, opts.map(function (o) {
+        return el('button', { class: 'chip' + (PREF[key] === o[0] ? ' on' : ''), type: 'button', text: o[1], onclick: function () {
+          PREF[key] = o[0]; try { localStorage.setItem('bihin.pref.' + key, o[0]); } catch (e) {} applyPref(); settingsView();
+        } });
+      })));
+    }
+    var view = el('div', { class: 'card setsec' }, el('h3', { text: '画面の見え方（この端末だけ）' }),
+      choice('文字の大きさ', 'size', [['normal', '標準'], ['large', '大きめ']]),
+      choice('PC での並べ方', 'wide', [['on', '横幅を使う'], ['off', 'スマホと同じ']]));
+    var about = el('div', { class: 'card setsec' }, el('h3', { text: 'この画面について' }),
+      el('div', { class: 'meta', text: '画面 v' + (window.BIHIN_VERSION || '?') + '・ログイン中：' + u.name + '（' + u.role + '）' }),
+      el('div', { class: 'row' }, el('button', { class: 'btn small', type: 'button', text: 'お知らせを見る', onclick: function () { newsView('feature'); } })));
+    var back = el('button', { class: 'btn small', type: 'button', text: '← 戻る', style: 'align-self:flex-start', onclick: function () { start(); } });
+    var head = el('h2', { text: '設定', style: 'font-size:18px;margin:0' });
+    if (u.role !== '管理部') return show(back, head, view, about);
+    show(back, head, view, el('div', { class: 'empty', text: '管理部の設定を読み込んでいます…' }), about);
+    var draw = function () { show(back, head, view, el('div', { class: 'cards2' }, spotsCard(), notifyCard()), about); };
+    if (S.spots.length) draw();
+    else call({ action: 'itemsAdmin' }).then(function (r) { if (r.ok) { S.spots = r.spots; S.adminItems = r.items; } draw(); }).catch(fail);
   }
 
   /* ---------- 管理部：連絡（在庫切れとほしい！を1つに。見守りの「疑問・気づき一覧」と同じ絞り込み） ---------- */
@@ -519,7 +582,8 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
           pic(catArt(it), 'th'), el('span', { class: 'nm', text: it.name }),
           el('span', { class: 'meta', text: (it.spot || '—') + '・' + it.code }), !it.use && el('span', { class: 'tag none', text: '使わない' }));
       }));
-      show(flash, el('div', { class: 'row' }, add, qr, open), list, el('div', { class: 'cards2' }, spotsCard(), notifyCard()));
+      show(flash, el('div', { class: 'row' }, add, qr, open), list,
+        el('div', { class: 'meta', text: '置き場所の名前・通知メールの送り先は、右上の歯車（設定）に移しました。' }));
     }).catch(fail);
   }
 
@@ -665,20 +729,21 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
   function drawList() {
     var q = el('input', { type: 'search', placeholder: '名前・備品コードで絞り込み', value: S.q, 'aria-label': '絞り込み' });
     var list = el('div', { class: 'list cols' });
+    var count = el('div', { class: 'meta' });   // 件数は一覧の外（中に入れると PC で左上の1枠を取ってしまう）
     function fill() {
       var k = S.q.trim().toLowerCase();
       var xs = S.items.filter(function (it) { return !k || (it.name + ' ' + it.code).toLowerCase().indexOf(k) >= 0; });
-      var none = S.items.filter(function (it) { return !it.hasPhoto; }).length;
-      list.replaceChildren.apply(list, [el('div', { class: 'meta', text: '写真が無い備品：' + none + '件' })].concat(xs.map(function (it) {
+      count.textContent = '写真が無い備品：' + S.items.filter(function (it) { return !it.hasPhoto; }).length + '件';
+      list.replaceChildren.apply(list, xs.map(function (it) {
         return el('button', { class: 'item', type: 'button', onclick: function () { photoView(it); } },
           pic(catArt(it), 'th'),
           el('span', { class: 'nm', text: it.name }), el('span', { class: 'meta', text: it.code }),
           el('span', { class: 'tag ' + (it.hasPhoto ? 'has' : 'none'), text: it.hasPhoto ? '写真あり' : '写真なし' }));
-      })));
+      }));
     }
     q.oninput = function () { S.q = q.value; fill(); };
     fill();
-    show(q, list);
+    show(q, count, list);
   }
 
   function photoView(it, flash) {
