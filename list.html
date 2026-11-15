@@ -282,9 +282,14 @@ label{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
       var n = S.items.filter(function (i) { return i.spot === s.id; }).length;
       return el('button', { class: 'chip', type: 'button', 'aria-pressed': String(s.id === cur.id), text: s.id + '．' + s.name + '（' + n + '）', onclick: function () { S.mapSpot = s.id; drawMap(); } });
     }));
-    show(el('div', { class: 'meta', text: '赤い印を押すと、そこにある備品が下に出ます。' }), plan, spotBtns,
-      el('h2', { text: cur.id + '．' + cur.name, style: 'font-size:17px;margin:4px 0 0' }),
-      here.length ? el('div', { class: 'grid' }, here.map(card)) : el('div', { class: 'empty', text: 'この置き場所の備品は、まだ登録されていません。' }), wantLink());
+    // PC では図面（左）と、その場所の備品（右）を並べる（theme.css の .split）。スマホでは上下
+    show(el('div', { class: 'meta', text: '赤い印を押すと、そこにある備品が出ます。' }),
+      el('div', { class: 'split' },
+        el('div', { class: 'mainp' }, plan, spotBtns),
+        el('div', { class: 'side' },
+          el('h2', { text: cur.id + '．' + cur.name, style: 'font-size:17px;margin:4px 0 0' }),
+          here.length ? el('div', { class: 'grid' }, here.map(card)) : el('div', { class: 'empty', text: 'この置き場所の備品は、まだ登録されていません。' }))),
+      wantLink());
   }
 
   /* ---------- ほしい！ ---------- */

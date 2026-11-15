@@ -42,5 +42,26 @@ nav button[aria-selected="true"]{color:var(--ink)!important}
 .tag.kout{background:var(--stamp-soft)!important;color:var(--stamp)!important}
 .tag.kreq{background:var(--blue-soft)!important;color:var(--blue)!important}
 
+.rp-right{display:flex;flex-direction:column;gap:14px}
+
+/* ---------- PC（横 900px 以上）では横幅を使う。スマホの見た目は変えない ---------- */
+@media (min-width:900px){
+  .wrap{max-width:1240px!important}
+  /* 管理用：連絡はカードを横に並べる。絞り込みは上に横長 */
+  .tasklist{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px!important;align-items:start}
+  .tasklist>div{min-width:0}
+  /* 管理用・一覧：図面と、置き場所の一覧（または備品）を左右に */
+  .split{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:20px;align-items:start}
+  .split>.side{display:flex;flex-direction:column;gap:12px}
+  .split>.mainp{position:sticky;top:120px}
+  /* 管理用：備品・写真の一覧は2〜3列 */
+  .list.cols{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:8px}
+  .cards2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+  /* 報告ページ：写真のカードと、ボタンの所を左右に */
+  main.reportpc{max-width:980px!important;display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:center;min-height:auto!important;padding-top:40px!important}
+  main.reportpc>.spacer{display:none}
+  main.reportpc>.rp-right{display:flex;flex-direction:column;gap:12px}
+}
+
 /* 数字は等幅 */
 .cn,.verbar{font-family:var(--f-mono)}

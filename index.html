@@ -88,7 +88,7 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
     if (/紙|付箋|用紙/.test(s)) return 'img/cat-paper.webp';
     return 'img/cat-other.webp';
   }
-  function show() { app.replaceChildren.apply(app, arguments); }
+  function show() { app.classList.remove('reportpc'); app.replaceChildren.apply(app, arguments); }
   function fmt(iso) { var d = new Date(iso); if (isNaN(d)) return ''; return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   function recentlySent() { try { var t = Number(localStorage.getItem(sentKey) || 0); return t && Date.now() - t < COOLDOWN_MS; } catch (e) { return false; } }
   function markSent() { try { localStorage.setItem(sentKey, String(Date.now())); } catch (e) {} }
@@ -136,11 +136,12 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
   function render(data) {
     var item = data.item, open = data.open;
     var nodes = [card(item, !!open)];
+    var right = el('div', 'rp-right');   // PC では写真のカード（左）と、この中（右）を並べる（theme.css の main.reportpc）
     var btn;
     if (open) {
       var w = el('div', 'note warn');
       w.append(img('img/already.webp'), el('span', null, 'もう報告が出ています（' + fmt(open.since) + ' から・' + open.count + '人）。管理部が対応します。'));
-      nodes.push(w);
+      right.append(w);
       btn = el('button', 'go sub', 'わたしも無かった');
     } else {
       btn = el('button', 'go', 'なくなりました');
@@ -155,8 +156,10 @@ h1{font-size:24px;line-height:1.35;margin:8px 0 0}
     var area = el('div', 'actarea');
     area.append(btn, more);
     btn.onclick = function () { confirmSend(area, item, !!open, btn, more); };
-    nodes.push(el('div', 'spacer'), area);
+    right.append(area);
+    nodes.push(el('div', 'spacer'), right);
     show.apply(null, nodes);
+    app.classList.add('reportpc');
   }
 
   function confirmSend(area, item, again, btn, more) {

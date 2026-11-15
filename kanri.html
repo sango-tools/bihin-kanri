@@ -311,7 +311,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     var q = el('input', { type: 'search', placeholder: '名前・内容・置き場所で探す', value: TF.q, 'aria-label': '探す' });
     var sort = el('select', { 'aria-label': '並べ方', style: 'width:auto;flex:none' },
       [['new', '新しい順'], ['old', '古い順'], ['spot', '置き場所ごと']].map(function (o) { return el('option', { value: o[0], text: o[1], selected: TF.sort === o[0] }); }));
-    var list = el('div', { style: 'display:flex;flex-direction:column;gap:8px' });
+    var list = el('div', { class: 'tasklist', style: 'display:flex;flex-direction:column;gap:8px' });   // PC ではカードを横に並べる（theme.css）
     function fill() {
       var k = TF.q.trim().toLowerCase();
       var xs = ts.filter(kf[2]).filter(sf[2]).filter(function (t) { return !k || [t.title, t.name, t.place, t.code, t.itemName].join(' ').toLowerCase().indexOf(k) >= 0; });
@@ -324,9 +324,10 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
         list.replaceChildren.apply(list, keys.map(function (g) {
           var nm = (S.spots.find(function (s) { return s.id === g; }) || {}).name;
           return el('div', {}, el('div', { class: 'meta', style: 'font-weight:700;margin:4px 0', text: g === '—' ? '置き場所なし' : g + '．' + (nm || '') + '（' + groups[g].length + '）' }),
-            el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, groups[g].map(taskCard)));
+            el('div', { class: 'tasklist', style: 'display:flex;flex-direction:column;gap:8px' }, groups[g].map(taskCard)));
         }));
-      } else list.replaceChildren.apply(list, xs.map(taskCard));
+        list.className = '';   // 置き場所ごとの時は、まとまりの中でカードを横に並べる
+      } else { list.className = 'tasklist'; list.replaceChildren.apply(list, xs.map(taskCard)); }
     }
     q.oninput = function () { TF.q = q.value; fill(); };
     sort.onchange = function () { TF.sort = sort.value; lsSet('bihin.t.sort', TF.sort); fill(); };
@@ -393,8 +394,11 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     {
       var asks = function (s) { return (s.out || 0) + (s.req || 0); };   // 依頼の数＝在庫切れ＋その場所の備品についてのほしい！
       var xs = r.spots.slice().sort(function (a, b) { return asks(b) - asks(a) || b.soon - a.soon || a.id.localeCompare(b.id); });
-      show(stale ? staleNote() : null, r.map ? spotMap(r.map, r.spots) : null,
-        el('div', { class: 'meta', text: '依頼の多い順です。図面の印か、下の置き場所を押すと、そこの備品と補充の履歴が出ます。' }),
+      // PC では図面（左）と置き場所の一覧（右）を並べる（theme.css の .split）。スマホでは上下
+      show(stale ? staleNote() : null, el('div', { class: 'split' },
+        el('div', { class: 'mainp' }, r.map ? spotMap(r.map, r.spots) : null),
+        el('div', { class: 'side' },
+        el('div', { class: 'meta', text: '依頼の多い順です。図面の印か、置き場所を押すと、そこの備品と補充の履歴が出ます。' }),
         el('div', { class: 'list' }, xs.map(function (s) {
           var n = asks(s);
           return el('button', { class: 'item', type: 'button', onclick: function () { spotDetail(s); } },
@@ -402,7 +406,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
             el('span', { class: 'nm' }, s.name, el('div', { class: 'meta', style: 'font-weight:400', text: s.lastRefill ? '前回の補充 ' + fmt(s.lastRefill).split(' ')[0] + '・' + s.lastRefillItem : 'まだ補充の記録がありません' })),
             n ? el('span', { class: 'meta', style: 'text-align:right', text: [s.out && '在庫切れ ' + s.out, s.req && 'ほしい！ ' + s.req].filter(Boolean).join('・') })
               : s.soon ? el('span', { class: 'tag doing', text: 'そろそろ ' + s.soon }) : el('span', { class: 'meta', text: s.items.length + '品目' }));
-        })));
+        })))));
     }
   }
   /* 図面（配置図）の上に、置き場所ごとの押せる印を重ねる（山郷サポートの敷地マップと同じ作り）。
@@ -438,7 +442,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
     var items = s.items.slice().sort(function (a, b) { return (b.out - a.out) || (b.soon - a.soon) || a.name.localeCompare(b.name, 'ja'); });
     show(el('button', { class: 'btn small', type: 'button', id: 'spotDetail', text: '← 置き場所の一覧へ', style: 'align-self:flex-start', onclick: spotsView }),
       el('h2', { text: s.id + '．' + s.name, style: 'font-size:18px;margin:0' }),
-      items.length ? el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, items.map(function (i) {
+      items.length ? el('div', { class: 'tasklist', style: 'display:flex;flex-direction:column;gap:8px' }, items.map(function (i) {
         var line = [i.refills.length ? '補充 ' + i.refills.length + '回' : '補充の記録なし', i.avgDays ? '平均 ' + i.avgDays + '日ごとに切れる' : '', i.sinceDays != null ? '前回の補充から ' + i.sinceDays + '日' : ''].filter(Boolean).join('・');
         var hist = i.outs.map(function (o) { return fmt(o).split(' ')[0]; }).join(' → ');
         return el('div', { class: 'card' },
@@ -510,12 +514,12 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
           location.href = x.listUrl;
         }).catch(function (e) { open.disabled = false; fail(e); });
       } });
-      var list = el('div', { class: 'list' }, r.items.map(function (it) {
+      var list = el('div', { class: 'list cols' }, r.items.map(function (it) {
         return el('button', { class: 'item', type: 'button', style: it.use ? null : 'opacity:.55', onclick: function () { itemForm(it); } },
           pic(catArt(it), 'th'), el('span', { class: 'nm', text: it.name }),
           el('span', { class: 'meta', text: (it.spot || '—') + '・' + it.code }), !it.use && el('span', { class: 'tag none', text: '使わない' }));
       }));
-      show(flash, el('div', { class: 'row' }, add, qr, open), list, spotsCard(), notifyCard());
+      show(flash, el('div', { class: 'row' }, add, qr, open), list, el('div', { class: 'cards2' }, spotsCard(), notifyCard()));
     }).catch(fail);
   }
 
@@ -660,7 +664,7 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
 
   function drawList() {
     var q = el('input', { type: 'search', placeholder: '名前・備品コードで絞り込み', value: S.q, 'aria-label': '絞り込み' });
-    var list = el('div', { class: 'list' });
+    var list = el('div', { class: 'list cols' });
     function fill() {
       var k = S.q.trim().toLowerCase();
       var xs = S.items.filter(function (it) { return !k || (it.name + ' ' + it.code).toLowerCase().indexOf(k) >= 0; });
