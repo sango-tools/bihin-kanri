@@ -854,25 +854,49 @@ select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px
       el('div', { class: 'meta', text: 'マップの A〜F の名前です。変えると、一覧・報告ページ・通知の表示も変わります。' }), rows, b, msg);
   }
 
+  /* 通知メール：送り先・送る時刻・曜日（2026-11-15 木村さん「何時に状況確認をして、メールが飛ぶ」）。
+     保存すると、時刻があれば1時間ごとの仕掛けを GAS が自分で入れる（時刻を全部外すと止まる） */
   function notifyCard() {
     var inp = el('input', { type: 'text', id: 'nTo', placeholder: 'メールアドレス（複数はカンマで区切る）', 'aria-label': '通知先' });
+    var HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+    var st = { hours: [], days: '平日' };
+    var hourRow = el('div', { class: 'row', style: 'gap:6px' });
+    var dayRow = el('div', { class: 'row', style: 'gap:6px' });
+    function drawPick() {
+      hourRow.replaceChildren.apply(hourRow, HOURS.map(function (h) {
+        var on = st.hours.indexOf(h) >= 0;
+        return el('button', { class: 'chip' + (on ? ' on' : ''), type: 'button', 'aria-pressed': String(on), text: h + '時', onclick: function () {
+          st.hours = on ? st.hours.filter(function (x) { return x !== h; }) : st.hours.concat([h]).sort(function (x, y) { return x - y; }); drawPick();
+        } });
+      }));
+      dayRow.replaceChildren.apply(dayRow, ['平日', '毎日'].map(function (d) {
+        return el('button', { class: 'chip' + (st.days === d ? ' on' : ''), type: 'button', 'aria-pressed': String(st.days === d), text: d === '平日' ? '平日だけ（月〜金）' : '毎日', onclick: function () { st.days = d; drawPick(); } });
+      }));
+    }
     var msg = el('div', { class: 'meta', text: '読み込んでいます…' });
-    var b = el('button', { class: 'btn small', type: 'button', text: '保存' });
-    call({ action: 'notifyGet' }).then(function (r) {
-      if (!r.ok) { msg.textContent = errText(r); return; }
-      inp.value = r.recipients;
-      msg.textContent = r.live ? '正式運用中：在庫切れ・ほしい！を1時間ごとにまとめて、この宛先に送ります。' : 'いまはテスト運用です（メールは持ち主にだけ届きます）。正式運用への切り替えは持ち主がスプレッドシートで行います。';
-    }).catch(function () {});
+    var state = el('div', { class: 'meta' });
+    var b = el('button', { class: 'btn small primary', type: 'button', text: '保存する', style: 'align-self:flex-start;margin-top:8px' });
+    function fillState(r) {
+      inp.value = r.recipients; st.hours = r.hours || []; st.days = r.days || '平日'; drawPick();
+      state.textContent = (r.hours && r.hours.length ? '送る時：' + r.hours.join('時・') + '時台（' + (r.days === '毎日' ? '毎日' : '平日だけ') + '）。' : 'いまは送りません（時刻を選ぶと送ります）。') +
+        (r.live ? ' 正式運用中：この宛先に届きます。' : ' いまはテスト運用です（メールは持ち主にだけ届きます。正式への切り替えは持ち主がスプレッドシートで行います）。');
+      msg.textContent = 'その時刻に、まだ済んでいない連絡をまとめて送ります（新着と、まだ手つかずの物を上に。対応中は件数だけ）。済んでいない物が無ければ送りません。';
+    }
+    call({ action: 'notifyGet' }).then(function (r) { if (!r.ok) { msg.textContent = errText(r); return; } fillState(r); }).catch(function () {});
+    drawPick();
     b.onclick = function () {
       b.disabled = true;
-      call({ action: 'notifySet', recipients: inp.value }).then(function (r) {
+      call({ action: 'notifySet', recipients: inp.value, hours: st.hours, days: st.days }).then(function (r) {
         b.disabled = false;
         if (!r.ok) { msg.textContent = r.error === 'email' ? 'メールアドレスの形を確かめてください：' + (r.bad || []).join(', ') : errText(r); return; }
-        inp.value = r.recipients; b.textContent = '保存しました';
+        fillState(r); toastMsg('通知の設定を保存しました。');
       }).catch(function (e) { b.disabled = false; fail(e); });
     };
-    return el('div', { class: 'card' }, el('h2', { text: '通知メールの送り先', style: 'font-size:16px;margin:0' }),
-      el('div', { class: 'row', style: 'flex-wrap:nowrap;margin-top:6px' }, inp, b), msg);
+    return el('div', { class: 'card', style: 'display:flex;flex-direction:column;gap:6px' }, el('h2', { text: '通知メール', style: 'font-size:16px;margin:0' }),
+      el('label', { for: 'nTo', text: '送り先' }), inp,
+      el('div', { class: 'meta', text: '送る時刻（いくつでも選べる。その時台に送る）' }), hourRow,
+      el('div', { class: 'meta', text: '曜日' }), dayRow,
+      b, state, msg);
   }
 
   /* QR の札：選んだ備品（無ければ全部）と「ほしい！・一覧」の札を、このページの中に並べて印刷する
